@@ -2,3 +2,5 @@ node_modules/
 dist/
 .devlens/
 *.tmp
+
+.claude/hooks/
