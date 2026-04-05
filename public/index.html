@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Devlens</title>
+  <link rel="stylesheet" href="https://unpkg.com/diff2html/bundles/css/diff2html.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav id="topbar">
+    <span class="logo">Devlens</span>
+    <div class="tabs">
+      <button class="tab active" data-tab="diff">Diffs</button>
+      <button class="tab" data-tab="tasks">Tasks</button>
+      <button class="tab" data-tab="integrations">Integrations</button>
+    </div>
+    <span class="status-dot" id="ws-status" title="WebSocket disconnected"></span>
+  </nav>
+
+  <main>
+    <section id="diff-view" class="tab-content active">
+      <div class="diff-toolbar">
+        <div class="diff-filters">
+          <button class="btn btn-sm active" data-filter="all">All</button>
+          <button class="btn btn-sm" data-filter="unstaged">Unstaged</button>
+          <button class="btn btn-sm" data-filter="staged">Staged</button>
+        </div>
+        <div class="diff-view-toggle">
+          <button class="btn btn-sm active" data-view="side-by-side">Side by Side</button>
+          <button class="btn btn-sm" data-view="line-by-line">Line by Line</button>
+        </div>
+      </div>
+      <div class="diff-container">
+        <aside id="file-list" class="file-list">
+          <h3>Changed Files</h3>
+          <ul id="file-list-items"></ul>
+        </aside>
+        <div id="diff-output" class="diff-output">
+          <p class="placeholder">No changes detected</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="tasks-view" class="tab-content">
+      <div class="tasks-toolbar">
+        <h2>Task Board</h2>
+        <button class="btn btn-primary" id="add-task-btn">+ New Task</button>
+      </div>
+      <div id="kanban-board" class="kanban-board">
+        <div class="kanban-column" data-status="pending">
+          <div class="column-header"><h3>Pending</h3><span class="count">0</span></div>
+          <div class="column-cards" data-status="pending"></div>
+        </div>
+        <div class="kanban-column" data-status="in-progress">
+          <div class="column-header"><h3>In Progress</h3><span class="count">0</span></div>
+          <div class="column-cards" data-status="in-progress"></div>
+        </div>
+        <div class="kanban-column" data-status="completed">
+          <div class="column-header"><h3>Completed</h3><span class="count">0</span></div>
+          <div class="column-cards" data-status="completed"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="integrations-view" class="tab-content">
+      <div class="integrations-container">
+        <h2>External Integrations</h2>
+        <div id="integrations-content">
+          <p class="placeholder">Configure Jira or Linear to see external tasks</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Task Modal -->
+  <div id="task-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h3 id="modal-title">New Task</h3>
+      <form id="task-form">
+        <input type="hidden" id="task-id">
+        <label>Title<input type="text" id="task-title-input" required></label>
+        <label>Description<textarea id="task-desc-input" rows="3"></textarea></label>
+        <label>Priority
+          <select id="task-priority-input">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+        <label>Status
+          <select id="task-status-input">
+            <option value="pending">Pending</option>
+            <option value="in-progress">In Progress</option>
+            <option value="completed">Completed</option>
+          </select>
+        </label>
+        <label>Tags (comma-separated)<input type="text" id="task-tags-input"></label>
+        <div class="modal-actions">
+          <button type="button" class="btn" id="modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script src="https://unpkg.com/diff2html/bundles/js/diff2html-ui.min.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="/js/diff.js"></script>
+  <script src="/js/tasks.js"></script>
+  <script src="/js/integrations.js"></script>
+</body>
+</html>
