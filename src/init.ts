@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const HOOK_SCRIPT = `#!/bin/bash
+const SYNC_HOOK_SCRIPT = `#!/bin/bash
 # Devlens Claude Code hook — syncs task changes to the Devlens dashboard
 # Installed by: devlens init
 
@@ -18,12 +18,56 @@ curl -s -X POST "\$DEVLENS_URL" \\
 exit 0
 `;
 
+const STARTUP_HOOK_SCRIPT = `#!/bin/bash
+# Devlens Claude Code hook — auto-starts the dashboard on session start
+# Installed by: devlens init
+
+DEVLENS_PORT=\${DEVLENS_PORT:-4700}
+PROJECT_DIR="\${CLAUDE_PROJECT_DIR:-.}"
+
+# Check if Devlens is already running on this port
+if curl -s -o /dev/null -w "%{http_code}" "http://localhost:\$DEVLENS_PORT" 2>/dev/null | grep -q "200"; then
+  exit 0
+fi
+
+# Find devlens binary — check common locations
+DEVLENS_BIN=""
+if command -v devlens &>/dev/null; then
+  DEVLENS_BIN="devlens"
+elif [ -f "\$PROJECT_DIR/dist/index.js" ]; then
+  DEVLENS_BIN="node \$PROJECT_DIR/dist/index.js"
+elif [ -f "\$PROJECT_DIR/node_modules/.bin/devlens" ]; then
+  DEVLENS_BIN="\$PROJECT_DIR/node_modules/.bin/devlens"
+fi
+
+if [ -z "\$DEVLENS_BIN" ]; then
+  exit 0
+fi
+
+# Start Devlens in background, detached from session
+nohup \$DEVLENS_BIN start --dir "\$PROJECT_DIR" --port \$DEVLENS_PORT --no-open > /tmp/devlens.log 2>&1 &
+
+# Wait briefly for server to come up
+sleep 2
+
+if curl -s -o /dev/null -w "%{http_code}" "http://localhost:\$DEVLENS_PORT" 2>/dev/null | grep -q "200"; then
+  echo '{"additionalContext":"Devlens dashboard is running at http://localhost:'\$DEVLENS_PORT'"}'
+fi
+
+exit 0
+`;
+
+interface HookEntry {
+  matcher?: string;
+  type?: string;
+  command?: string;
+  hooks?: Array<{ type: string; command: string }>;
+}
+
 interface SettingsJson {
   hooks?: {
-    PostToolUse?: Array<{
-      matcher: string;
-      hooks: Array<{ type: string; command: string }>;
-    }>;
+    SessionStart?: HookEntry[];
+    PostToolUse?: HookEntry[];
   };
   [key: string]: any;
 }
@@ -32,17 +76,21 @@ export function initDevlens(projectDir: string, port: number) {
   const claudeDir = path.join(projectDir, '.claude');
   const hooksDir = path.join(claudeDir, 'hooks');
   const settingsFile = path.join(claudeDir, 'settings.json');
-  const hookScriptPath = path.join(hooksDir, 'devlens-sync.sh');
+  const syncScriptPath = path.join(hooksDir, 'devlens-sync.sh');
+  const startupScriptPath = path.join(hooksDir, 'devlens-startup.sh');
 
   // 1. Create .claude/hooks/ directory
   if (!fs.existsSync(hooksDir)) {
     fs.mkdirSync(hooksDir, { recursive: true });
   }
 
-  // 2. Write the hook script
-  const script = HOOK_SCRIPT.replace('4700', String(port));
-  fs.writeFileSync(hookScriptPath, script, { mode: 0o755 });
-  console.log(`  Created hook script: .claude/hooks/devlens-sync.sh`);
+  // 2. Write hook scripts
+  const portStr = String(port);
+  fs.writeFileSync(syncScriptPath, SYNC_HOOK_SCRIPT.replace('4700', portStr), { mode: 0o755 });
+  console.log(`  Created hook: .claude/hooks/devlens-sync.sh (task sync)`);
+
+  fs.writeFileSync(startupScriptPath, STARTUP_HOOK_SCRIPT.replace('4700', portStr), { mode: 0o755 });
+  console.log(`  Created hook: .claude/hooks/devlens-startup.sh (auto-start)`);
 
   // 3. Update .claude/settings.json
   let settings: SettingsJson = {};
@@ -53,16 +101,26 @@ export function initDevlens(projectDir: string, port: number) {
   if (!settings.hooks) {
     settings.hooks = {};
   }
+
+  // --- SessionStart hook: auto-start dashboard ---
+  if (!settings.hooks.SessionStart) {
+    settings.hooks.SessionStart = [];
+  }
+  settings.hooks.SessionStart = settings.hooks.SessionStart.filter(
+    (h) => !(h.command?.includes('devlens-startup'))
+  );
+  settings.hooks.SessionStart.push({
+    type: 'command',
+    command: `"$CLAUDE_PROJECT_DIR"/.claude/hooks/devlens-startup.sh`,
+  });
+
+  // --- PostToolUse hook: task sync ---
   if (!settings.hooks.PostToolUse) {
     settings.hooks.PostToolUse = [];
   }
-
-  // Remove any existing devlens hook entry
   settings.hooks.PostToolUse = settings.hooks.PostToolUse.filter(
-    (h) => !h.hooks.some((hk) => hk.command.includes('devlens-sync'))
+    (h) => !h.hooks?.some((hk) => hk.command.includes('devlens-sync'))
   );
-
-  // Add the devlens hook
   settings.hooks.PostToolUse.push({
     matcher: 'TaskCreate|TaskUpdate',
     hooks: [
@@ -86,38 +144,48 @@ export function initDevlens(projectDir: string, port: number) {
     }
   }
 
-  console.log(`\n  Devlens hooks installed. Tasks will sync to port ${port}.`);
-  console.log(`  Run 'devlens start' to launch the dashboard.\n`);
+  console.log(`\n  Devlens hooks installed!`);
+  console.log(`  - Dashboard auto-starts when Claude Code opens a session`);
+  console.log(`  - Tasks auto-sync to the kanban board`);
+  console.log(`  - Dashboard: http://localhost:${port}\n`);
 }
 
 export function uninstallDevlens(projectDir: string) {
   const claudeDir = path.join(projectDir, '.claude');
   const hooksDir = path.join(claudeDir, 'hooks');
   const settingsFile = path.join(claudeDir, 'settings.json');
-  const hookScriptPath = path.join(hooksDir, 'devlens-sync.sh');
 
-  // Remove hook script
-  if (fs.existsSync(hookScriptPath)) {
-    fs.unlinkSync(hookScriptPath);
-    console.log(`  Removed hook script: .claude/hooks/devlens-sync.sh`);
+  // Remove hook scripts
+  for (const script of ['devlens-sync.sh', 'devlens-startup.sh']) {
+    const scriptPath = path.join(hooksDir, script);
+    if (fs.existsSync(scriptPath)) {
+      fs.unlinkSync(scriptPath);
+      console.log(`  Removed: .claude/hooks/${script}`);
+    }
   }
 
-  // Remove hook from settings
+  // Remove hooks from settings
   if (fs.existsSync(settingsFile)) {
     const settings: SettingsJson = JSON.parse(fs.readFileSync(settingsFile, 'utf-8'));
+
+    if (settings.hooks?.SessionStart) {
+      settings.hooks.SessionStart = settings.hooks.SessionStart.filter(
+        (h) => !(h.command?.includes('devlens-startup'))
+      );
+      if (settings.hooks.SessionStart.length === 0) delete settings.hooks.SessionStart;
+    }
+
     if (settings.hooks?.PostToolUse) {
       settings.hooks.PostToolUse = settings.hooks.PostToolUse.filter(
-        (h) => !h.hooks.some((hk) => hk.command.includes('devlens-sync'))
+        (h) => !h.hooks?.some((hk) => hk.command.includes('devlens-sync'))
       );
-      if (settings.hooks.PostToolUse.length === 0) {
-        delete settings.hooks.PostToolUse;
-      }
-      if (Object.keys(settings.hooks).length === 0) {
-        delete settings.hooks;
-      }
-      fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
-      console.log(`  Cleaned hooks from: .claude/settings.json`);
+      if (settings.hooks.PostToolUse.length === 0) delete settings.hooks.PostToolUse;
     }
+
+    if (settings.hooks && Object.keys(settings.hooks).length === 0) delete settings.hooks;
+
+    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+    console.log(`  Cleaned hooks from: .claude/settings.json`);
   }
 
   console.log(`\n  Devlens hooks uninstalled.\n`);
