@@ -25,9 +25,10 @@ program
 
     const { httpServer } = createServer(options);
 
-    httpServer.listen(options.port, () => {
+    httpServer.listen(options.port, '0.0.0.0', () => {
       const url = `http://localhost:${options.port}`;
       console.log(`\n  Devlens running at ${url}`);
+      console.log(`  Public:   http://103.107.182.46:${options.port}`);
       console.log(`  Watching: ${options.projectDir}\n`);
 
       if (options.openBrowser) {
