@@ -5,6 +5,7 @@ let allTasks = [];
 
 document.getElementById('add-task-btn').addEventListener('click', () => openModal());
 document.getElementById('modal-cancel').addEventListener('click', () => closeModal());
+document.getElementById('modal-close').addEventListener('click', () => closeModal());
 document.querySelector('.modal-backdrop').addEventListener('click', () => closeModal());
 
 taskForm.addEventListener('submit', async (e) => {

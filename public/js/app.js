@@ -1,13 +1,13 @@
-// Tab switching
-const tabs = document.querySelectorAll('.tab');
+// Tab switching — sidebar nav
+const navItems = document.querySelectorAll('.nav-item');
 const tabContents = document.querySelectorAll('.tab-content');
 
-tabs.forEach(tab => {
-  tab.addEventListener('click', () => {
-    const target = tab.dataset.tab;
-    tabs.forEach(t => t.classList.remove('active'));
+navItems.forEach(item => {
+  item.addEventListener('click', () => {
+    const target = item.dataset.tab;
+    navItems.forEach(n => n.classList.remove('active'));
     tabContents.forEach(c => c.classList.remove('active'));
-    tab.classList.add('active');
+    item.classList.add('active');
     document.getElementById(target + '-view').classList.add('active');
   });
 });
@@ -15,21 +15,25 @@ tabs.forEach(tab => {
 // WebSocket
 let ws = null;
 let reconnectDelay = 1000;
-const statusDot = document.getElementById('ws-status');
+const statusEl = document.getElementById('ws-status');
+const statusIndicator = statusEl.querySelector('.status-indicator');
+const statusLabel = statusEl.querySelector('.status-label');
 
 function connectWebSocket() {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${protocol}//${location.host}/ws`);
 
   ws.onopen = () => {
-    statusDot.classList.add('connected');
-    statusDot.title = 'WebSocket connected';
+    statusIndicator.classList.add('connected');
+    statusLabel.textContent = 'Connected';
+    statusEl.title = 'WebSocket connected';
     reconnectDelay = 1000;
   };
 
   ws.onclose = () => {
-    statusDot.classList.remove('connected');
-    statusDot.title = 'WebSocket disconnected';
+    statusIndicator.classList.remove('connected');
+    statusLabel.textContent = 'Disconnected';
+    statusEl.title = 'WebSocket disconnected';
     setTimeout(connectWebSocket, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 2, 30000);
   };
@@ -65,7 +69,7 @@ function showToast(message, type = 'info') {
   container.appendChild(toast);
   setTimeout(() => {
     toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.3s';
-    setTimeout(() => toast.remove(), 300);
+    toast.style.transition = `opacity ${250}ms`;
+    setTimeout(() => toast.remove(), 250);
   }, 3000);
 }

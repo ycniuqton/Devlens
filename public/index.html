@@ -4,70 +4,174 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Devlens</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/diff2html/bundles/css/diff2html.min.css">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-  <nav id="topbar">
-    <span class="logo">Devlens</span>
-    <div class="tabs">
-      <button class="tab active" data-tab="diff">Diffs</button>
-      <button class="tab" data-tab="tasks">Tasks</button>
-      <button class="tab" data-tab="integrations">Integrations</button>
-    </div>
-    <span class="status-dot" id="ws-status" title="WebSocket disconnected"></span>
-  </nav>
 
-  <main>
-    <section id="diff-view" class="tab-content active">
-      <div class="diff-toolbar">
-        <div class="diff-filters">
-          <button class="btn btn-sm active" data-filter="all">All</button>
-          <button class="btn btn-sm" data-filter="unstaged">Unstaged</button>
-          <button class="btn btn-sm" data-filter="staged">Staged</button>
-        </div>
-        <div class="diff-view-toggle">
-          <button class="btn btn-sm active" data-view="side-by-side">Side by Side</button>
-          <button class="btn btn-sm" data-view="line-by-line">Line by Line</button>
-        </div>
+  <!-- Sidebar Navigation -->
+  <aside id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+        </svg>
       </div>
+      <span class="brand-name">Devlens</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-tab="diff" aria-label="View diffs">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v18M3 12h18"/><rect x="3" y="3" width="18" height="18" rx="2"/>
+        </svg>
+        <span>Diffs</span>
+      </button>
+      <button class="nav-item" data-tab="tasks" aria-label="View tasks">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>
+        </svg>
+        <span>Tasks</span>
+      </button>
+      <button class="nav-item" data-tab="integrations" aria-label="View integrations">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+        </svg>
+        <span>Integrations</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="connection-status" id="ws-status" title="Disconnected">
+        <span class="status-indicator"></span>
+        <span class="status-label">Disconnected</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main id="main-content">
+
+    <!-- Diffs View -->
+    <section id="diff-view" class="tab-content active">
+      <header class="view-header">
+        <h1>Changes</h1>
+        <div class="header-actions">
+          <div class="btn-group">
+            <button class="btn btn-ghost active" data-filter="all">All</button>
+            <button class="btn btn-ghost" data-filter="unstaged">Unstaged</button>
+            <button class="btn btn-ghost" data-filter="staged">Staged</button>
+          </div>
+          <div class="divider-v"></div>
+          <div class="btn-group">
+            <button class="btn btn-ghost" data-view="side-by-side">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="18" rx="1"/><rect x="13" y="3" width="8" height="18" rx="1"/></svg>
+              Split
+            </button>
+            <button class="btn btn-ghost active" data-view="line-by-line">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
+              Unified
+            </button>
+          </div>
+          <div class="divider-v"></div>
+          <div class="btn-group">
+            <button class="btn btn-ghost" id="toggle-wrap">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 6H3M15 12H3M17 12h1a2 2 0 0 1 0 4h-1l-2 2v-2H3"/></svg>
+              Wrap
+            </button>
+          </div>
+        </div>
+      </header>
       <div class="diff-container">
         <aside id="file-list" class="file-list">
-          <h3>Changed Files</h3>
-          <ul id="file-list-items"></ul>
+          <div class="file-list-header">
+            <h3>Files</h3>
+            <div class="file-list-actions">
+              <button class="btn-icon btn-icon-sm" id="file-view-tree" title="Folder view" aria-label="Folder view">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              </button>
+              <button class="btn-icon btn-icon-sm active" id="file-view-flat" title="Flat list" aria-label="Flat list">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              </button>
+              <span class="file-count" id="file-count">0</span>
+            </div>
+          </div>
+          <ul id="file-list-items">
+            <li class="empty-state-inline">No changed files</li>
+          </ul>
         </aside>
         <div id="diff-output" class="diff-output">
-          <p class="placeholder">No changes detected</p>
+          <div class="empty-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+            </svg>
+            <p>No changes detected</p>
+            <span>Edit files in your project to see diffs here</span>
+          </div>
         </div>
       </div>
     </section>
 
+    <!-- Tasks View -->
     <section id="tasks-view" class="tab-content">
-      <div class="tasks-toolbar">
-        <h2>Task Board</h2>
-        <button class="btn btn-primary" id="add-task-btn">+ New Task</button>
-      </div>
+      <header class="view-header">
+        <h1>Task Board</h1>
+        <button class="btn btn-primary" id="add-task-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Task
+        </button>
+      </header>
       <div id="kanban-board" class="kanban-board">
         <div class="kanban-column" data-status="pending">
-          <div class="column-header"><h3>Pending</h3><span class="count">0</span></div>
+          <div class="column-header">
+            <div class="column-title">
+              <span class="column-dot pending"></span>
+              <h3>Pending</h3>
+            </div>
+            <span class="count">0</span>
+          </div>
           <div class="column-cards" data-status="pending"></div>
         </div>
         <div class="kanban-column" data-status="in-progress">
-          <div class="column-header"><h3>In Progress</h3><span class="count">0</span></div>
+          <div class="column-header">
+            <div class="column-title">
+              <span class="column-dot in-progress"></span>
+              <h3>In Progress</h3>
+            </div>
+            <span class="count">0</span>
+          </div>
           <div class="column-cards" data-status="in-progress"></div>
         </div>
         <div class="kanban-column" data-status="completed">
-          <div class="column-header"><h3>Completed</h3><span class="count">0</span></div>
+          <div class="column-header">
+            <div class="column-title">
+              <span class="column-dot completed"></span>
+              <h3>Completed</h3>
+            </div>
+            <span class="count">0</span>
+          </div>
           <div class="column-cards" data-status="completed"></div>
         </div>
       </div>
     </section>
 
+    <!-- Integrations View -->
     <section id="integrations-view" class="tab-content">
+      <header class="view-header">
+        <h1>Integrations</h1>
+      </header>
       <div class="integrations-container">
-        <h2>External Integrations</h2>
         <div id="integrations-content">
-          <p class="placeholder">Configure Jira or Linear to see external tasks</p>
+          <div class="empty-state">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            <p>Connect your tools</p>
+            <span>Configure Jira or Linear to see external tasks</span>
+          </div>
         </div>
       </div>
     </section>
@@ -77,29 +181,47 @@
   <div id="task-modal" class="modal hidden">
     <div class="modal-backdrop"></div>
     <div class="modal-content">
-      <h3 id="modal-title">New Task</h3>
+      <div class="modal-header">
+        <h3 id="modal-title">New Task</h3>
+        <button type="button" class="btn btn-icon" id="modal-close" aria-label="Close modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
       <form id="task-form">
         <input type="hidden" id="task-id">
-        <label>Title<input type="text" id="task-title-input" required></label>
-        <label>Description<textarea id="task-desc-input" rows="3"></textarea></label>
-        <label>Priority
-          <select id="task-priority-input">
-            <option value="low">Low</option>
-            <option value="medium" selected>Medium</option>
-            <option value="high">High</option>
-          </select>
-        </label>
-        <label>Status
-          <select id="task-status-input">
-            <option value="pending">Pending</option>
-            <option value="in-progress">In Progress</option>
-            <option value="completed">Completed</option>
-          </select>
-        </label>
-        <label>Tags (comma-separated)<input type="text" id="task-tags-input"></label>
+        <div class="form-group">
+          <label for="task-title-input">Title</label>
+          <input type="text" id="task-title-input" placeholder="What needs to be done?" required>
+        </div>
+        <div class="form-group">
+          <label for="task-desc-input">Description</label>
+          <textarea id="task-desc-input" rows="3" placeholder="Add more details..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="task-priority-input">Priority</label>
+            <select id="task-priority-input">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="task-status-input">Status</label>
+            <select id="task-status-input">
+              <option value="pending">Pending</option>
+              <option value="in-progress">In Progress</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="task-tags-input">Tags</label>
+          <input type="text" id="task-tags-input" placeholder="bug, frontend, urgent">
+        </div>
         <div class="modal-actions">
-          <button type="button" class="btn" id="modal-cancel">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save</button>
+          <button type="button" class="btn btn-ghost" id="modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Task</button>
         </div>
       </form>
     </div>
