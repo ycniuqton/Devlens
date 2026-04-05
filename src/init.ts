@@ -107,11 +107,16 @@ export function initDevlens(projectDir: string, port: number) {
     settings.hooks.SessionStart = [];
   }
   settings.hooks.SessionStart = settings.hooks.SessionStart.filter(
-    (h) => !(h.command?.includes('devlens-startup'))
+    (h) => !h.command?.includes('devlens-startup') && !h.hooks?.some((hk) => hk.command.includes('devlens-startup'))
   );
   settings.hooks.SessionStart.push({
-    type: 'command',
-    command: `"$CLAUDE_PROJECT_DIR"/.claude/hooks/devlens-startup.sh`,
+    matcher: '',
+    hooks: [
+      {
+        type: 'command',
+        command: `"$CLAUDE_PROJECT_DIR"/.claude/hooks/devlens-startup.sh`,
+      },
+    ],
   });
 
   // --- PostToolUse hook: task sync ---
@@ -170,7 +175,7 @@ export function uninstallDevlens(projectDir: string) {
 
     if (settings.hooks?.SessionStart) {
       settings.hooks.SessionStart = settings.hooks.SessionStart.filter(
-        (h) => !(h.command?.includes('devlens-startup'))
+        (h) => !h.hooks?.some((hk) => hk.command.includes('devlens-startup'))
       );
       if (settings.hooks.SessionStart.length === 0) delete settings.hooks.SessionStart;
     }
