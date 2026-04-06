@@ -31,14 +31,26 @@ DEVLENS_PORT=__PORT__
 PROJECT_DIR="\${CLAUDE_PROJECT_DIR:-.}"
 RUNTIME_FILE="\$PROJECT_DIR/.devlens/runtime.json"
 
-# Already running? Check runtime file + verify process alive
-if [ -f "\$RUNTIME_FILE" ]; then
-  PORT=\$(grep -o '"port":[0-9]*' "\$RUNTIME_FILE" | cut -d: -f2)
-  if curl -s -o /dev/null -w "%{http_code}" "http://localhost:\$PORT" 2>/dev/null | grep -q "200"; then
-    URLS=\$(grep -o '"ips":\\[[^]]*\\]' "\$RUNTIME_FILE" | sed 's/"ips":\\[//;s/\\]//;s/"//g')
-    echo "{\\"additionalContext\\":\\"Devlens dashboard is running at http://localhost:\$PORT . Network IPs: \$URLS (port \$PORT). Use devlens status for details.\\"}"
-    exit 0
-  fi
+# Build the URL list (always available — port is deterministic)
+LOCAL_URL="http://localhost:\$DEVLENS_PORT"
+NETWORK_URLS=""
+for ip in \$(hostname -I 2>/dev/null || true); do
+  case "\$ip" in
+    127.*|::1|fe80*|*:*) continue ;;
+    *) NETWORK_URLS="\$NETWORK_URLS http://\$ip:\$DEVLENS_PORT" ;;
+  esac
+done
+
+emit_context() {
+  local status="\$1"
+  local msg="DEVLENS_DASHBOARD_URL: \$LOCAL_URL (network:\$NETWORK_URLS) — status: \$status. When the user asks about devlens dashboard URL/link/address, answer with this URL directly without running any command."
+  echo "{\\"additionalContext\\":\\"\$msg\\"}"
+}
+
+# Already running?
+if [ -f "\$RUNTIME_FILE" ] && curl -s -o /dev/null -w "%{http_code}" "\$LOCAL_URL" 2>/dev/null | grep -q "200"; then
+  emit_context "running"
+  exit 0
 fi
 
 # Find binary
@@ -46,7 +58,11 @@ BIN=""
 command -v devlens &>/dev/null && BIN="devlens"
 [ -z "\$BIN" ] && [ -f "\$PROJECT_DIR/dist/index.js" ] && BIN="node \$PROJECT_DIR/dist/index.js"
 [ -z "\$BIN" ] && [ -f "\$PROJECT_DIR/node_modules/.bin/devlens" ] && BIN="\$PROJECT_DIR/node_modules/.bin/devlens"
-[ -z "\$BIN" ] && exit 0
+
+if [ -z "\$BIN" ]; then
+  emit_context "binary-not-found"
+  exit 0
+fi
 
 # Start in background
 nohup \$BIN start --dir "\$PROJECT_DIR" --port \$DEVLENS_PORT --no-open > /tmp/devlens-\$DEVLENS_PORT.log 2>&1 &
@@ -55,10 +71,12 @@ nohup \$BIN start --dir "\$PROJECT_DIR" --port \$DEVLENS_PORT --no-open > /tmp/d
 for i in 1 2 3 4 5; do
   sleep 1
   if [ -f "\$RUNTIME_FILE" ]; then
-    echo "{\\"additionalContext\\":\\"Devlens dashboard started at http://localhost:\$DEVLENS_PORT . Use devlens status for all URLs.\\"}"
+    emit_context "started"
     exit 0
   fi
 done
+
+emit_context "starting-in-background"
 exit 0
 `;
 

@@ -1,3 +1,15 @@
+// Load project info into sidebar + page title
+fetch('/api/info').then(r => r.json()).then(info => {
+  if (info.projectName) {
+    document.title = `${info.projectName} — Devlens`;
+    const el = document.getElementById('brand-project');
+    if (el) {
+      el.textContent = info.projectName;
+      el.title = info.projectDir || info.projectName;
+    }
+  }
+}).catch(() => {});
+
 // Tab switching — sidebar nav with URL routing
 const navItems = document.querySelectorAll('.nav-item');
 const tabContents = document.querySelectorAll('.tab-content');

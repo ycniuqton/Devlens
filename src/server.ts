@@ -35,6 +35,13 @@ export function createServer(options: ServerOptions) {
   app.locals.port = options.port;
 
   // API routes
+  app.get('/api/info', (_req, res) => {
+    res.json({
+      projectDir: options.projectDir,
+      projectName: path.basename(options.projectDir),
+      port: options.port,
+    });
+  });
   app.use('/api', diffRouter);
   app.use('/api/tasks', tasksRouter);
   app.use('/api/integrations', integrationsRouter);
