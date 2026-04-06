@@ -1,62 +1,112 @@
 import { Router, Request, Response } from 'express';
+import fs from 'fs';
 import { TaskStoreService } from '../services/taskStore';
 import { WsMessage } from '../types';
-import { getTodos, upsertTodo, parseTodoWritePayload, readClaudeSessions, clearTodos } from '../services/claudeTasks';
 
+// Extract the user prompt that triggered the tool call from the transcript
+function extractContext(transcriptPath: string | undefined, toolUseId: string | undefined): string {
+  if (!transcriptPath || !toolUseId) return '';
+  try {
+    if (!fs.existsSync(transcriptPath)) return '';
+    const lines = fs.readFileSync(transcriptPath, 'utf-8').split('\n').filter(Boolean);
+
+    // Find the line with this tool_use_id
+    let toolLineIdx = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].includes(toolUseId)) {
+        toolLineIdx = i;
+        break;
+      }
+    }
+    if (toolLineIdx === -1) return '';
+
+    // Search backwards for the last user message with actual text
+    for (let j = toolLineIdx - 1; j >= Math.max(0, toolLineIdx - 50); j--) {
+      try {
+        const entry = JSON.parse(lines[j]);
+        if (entry.type !== 'user') continue;
+        const content = entry.message?.content;
+        let text = '';
+        if (typeof content === 'string') {
+          text = content;
+        } else if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block?.type === 'text' && block.text) {
+              text += block.text;
+            }
+          }
+        }
+        if (text.trim().length > 5) {
+          return text.trim().substring(0, 500);
+        }
+      } catch {}
+    }
+  } catch {}
+  return '';
+}
 export const tasksRouter = Router();
 
-// Sync endpoint — receives Claude Code hook payloads
+// Sync endpoint — receives Claude Code hook payloads (PostToolUse on TaskCreate/TaskUpdate)
 tasksRouter.post('/sync', async (req: Request, res: Response) => {
   const store: TaskStoreService = req.app.locals.taskStore;
   const broadcast: (msg: WsMessage) => void = req.app.locals.broadcast;
 
   try {
-    // Claude Code hook payload: { tool_name, tool_input, tool_response, session_id, ... }
-    const { tool_name, tool_input, tool_response, tool_output } = req.body;
+    const { tool_name, tool_input, tool_response, tool_output, session_id, transcript_path, tool_use_id } = req.body;
 
     if (!tool_name) {
       return res.status(400).json({ error: 'Invalid hook payload' });
     }
 
-    // --- TodoWrite: Claude's ephemeral todos ---
-    if (tool_name === 'TodoWrite') {
-      const todos = parseTodoWritePayload(tool_input);
-      for (const todo of todos) {
-        upsertTodo(todo);
-      }
-      if (broadcast) broadcast({ type: 'todo-update', payload: { todos: getTodos() } });
-      return res.json({ ok: true });
-    }
+    const sessionShort = session_id ? String(session_id).substring(0, 8) : '';
 
-    // --- Extract Claude task ID from response ---
-    // Real hook: tool_response.task.id = "10"
-    // Simulated: tool_output = "Task #10 created successfully"
+    // Extract Claude task ID
     let claudeTaskId: string | null = null;
     if (tool_response?.task?.id) {
       claudeTaskId = String(tool_response.task.id);
+    } else if (tool_response?.taskId) {
+      claudeTaskId = String(tool_response.taskId);
     } else {
       const outputStr = typeof tool_output === 'string' ? tool_output : JSON.stringify(tool_output || '');
       const idMatch = outputStr.match(/#(\d+)/);
       claudeTaskId = idMatch ? idMatch[1] : null;
     }
 
+    const claudeTag = claudeTaskId ? `claude:${sessionShort}:${claudeTaskId}` : null;
+
     if (tool_name === 'TaskCreate') {
       const subject = tool_input?.subject || tool_input?.title || 'Untitled';
       const description = tool_input?.description || '';
 
-      if (claudeTaskId) {
+      if (claudeTag) {
         const existing = await store.getTasks();
-        const found = existing.find(t => t.tags.includes(`claude:${claudeTaskId}`));
-        if (found) return res.json({ ok: true }); // already exists
+        const found = existing.find(t => t.tags.includes(claudeTag));
+        if (found) return res.json({ ok: true });
       }
+
+      // Extract user prompt context from transcript
+      const context = extractContext(transcript_path, tool_use_id);
 
       const task = await store.createTask({
         title: subject,
         description,
         status: 'pending',
         priority: 'medium',
-        tags: claudeTaskId ? [`claude:${claudeTaskId}`] : [],
+        tags: claudeTag ? [claudeTag] : [],
       });
+
+      // Store Claude-specific fields directly on the task object
+      if (claudeTaskId || tool_input?.activeForm || tool_input?.owner || tool_input?.metadata || context) {
+        const extra: Record<string, any> = {};
+        if (session_id) extra.claudeSessionId = session_id;
+        if (claudeTaskId) extra.claudeTaskId = claudeTaskId;
+        if (tool_input?.activeForm) extra.activeForm = tool_input.activeForm;
+        if (tool_input?.owner) extra.owner = tool_input.owner;
+        if (tool_input?.metadata) extra.metadata = tool_input.metadata;
+        if (context) extra.context = context;
+        await store.updateTask(task.id, extra as any);
+      }
+
       if (broadcast) broadcast({ type: 'task-update', payload: { action: 'created', task } });
     }
 
@@ -64,20 +114,39 @@ tasksRouter.post('/sync', async (req: Request, res: Response) => {
       const status = tool_input?.status;
       const claudeId = tool_input?.taskId;
 
+      // Find by session-scoped tag
       const existing = await store.getTasks();
-      const found = existing.find(t => t.tags.includes(`claude:${claudeId}`));
+      const tag = `claude:${sessionShort}:${claudeId}`;
+      let found = existing.find(t => t.tags.includes(tag));
+      // Fallback: try old format without session
+      if (!found) {
+        found = existing.find(t => t.tags.includes(`claude:${claudeId}`));
+      }
 
-      if (found && status) {
-        const statusMap: Record<string, string> = {
-          'in_progress': 'in-progress',
-          'completed': 'completed',
-          'pending': 'pending',
-          'deleted': 'completed',
-        };
-        const mappedStatus = statusMap[status] || status;
-        const updated = await store.updateTask(found.id, {
-          status: mappedStatus as any,
-        });
+      if (found) {
+        const updates: Record<string, any> = {};
+
+        if (status) {
+          if (status === 'deleted') {
+            updates.status = 'archived';
+          } else {
+            const statusMap: Record<string, string> = {
+              'in_progress': 'in-progress',
+              'completed': 'completed',
+              'pending': 'pending',
+            };
+            updates.status = statusMap[status] || status;
+          }
+        }
+
+        // Capture any field updates from Claude
+        if (tool_input?.subject) updates.title = tool_input.subject;
+        if (tool_input?.description) updates.description = tool_input.description;
+        if (tool_input?.activeForm) updates.activeForm = tool_input.activeForm;
+        if (tool_input?.owner) updates.owner = tool_input.owner;
+        if (tool_input?.metadata) updates.metadata = { ...(found as any).metadata, ...tool_input.metadata };
+
+        const updated = await store.updateTask(found.id, updates as any);
         if (broadcast) broadcast({ type: 'task-update', payload: { action: 'updated', task: updated } });
       }
     }
@@ -88,27 +157,6 @@ tasksRouter.post('/sync', async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/tasks/claude-todos — current session todos
-tasksRouter.get('/claude-todos', (_req: Request, res: Response) => {
-  res.json(getTodos());
-});
-
-// GET /api/tasks/claude-sessions — only sessions for this project directory
-tasksRouter.get('/claude-sessions', (req: Request, res: Response) => {
-  const projectDir: string = req.app.locals.projectDir;
-  const allSessions = readClaudeSessions();
-  // Filter to only sessions that ran in this project directory
-  const filtered = allSessions.filter(s => s.cwd === projectDir);
-  res.json(filtered);
-});
-
-// POST /api/tasks/claude-todos/clear — clear in-memory todos
-tasksRouter.post('/claude-todos/clear', (_req: Request, res: Response) => {
-  clearTodos();
-  const broadcast: (msg: WsMessage) => void = _req.app.locals.broadcast;
-  if (broadcast) broadcast({ type: 'todo-update', payload: { todos: [] } });
-  res.json({ ok: true });
-});
 
 tasksRouter.get('/', async (req: Request, res: Response) => {
   const store: TaskStoreService = req.app.locals.taskStore;

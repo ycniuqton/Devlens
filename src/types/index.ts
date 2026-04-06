@@ -22,13 +22,21 @@ export interface Task {
   id: string;
   title: string;
   description: string;
-  status: 'pending' | 'in-progress' | 'completed';
+  status: 'pending' | 'in-progress' | 'completed' | 'archived';
   priority: 'low' | 'medium' | 'high';
   tags: string[];
   dependencies: string[];
   createdAt: string;
   updatedAt: string;
+  completedAt?: string;
   source: 'local';
+  // Claude Code metadata
+  claudeSessionId?: string;
+  claudeTaskId?: string;
+  activeForm?: string;
+  owner?: string;
+  metadata?: Record<string, any>;
+  context?: string; // user prompt that triggered this task
 }
 
 export interface CreateTaskInput {

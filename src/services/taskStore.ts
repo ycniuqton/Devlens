@@ -3,6 +3,8 @@ import path from 'path';
 import crypto from 'crypto';
 import { Task, CreateTaskInput, UpdateTaskInput, TaskStore } from '../types';
 
+const ARCHIVE_AFTER_MS = 60 * 60 * 1000; // 1 hour
+
 export interface TaskStoreService {
   getTasks(filter?: { status?: string }): Promise<Task[]>;
   getTask(id: string): Promise<Task | null>;
@@ -37,9 +39,29 @@ export function createTaskStore(projectDir: string): TaskStoreService {
     fs.renameSync(tmpFile, tasksFile);
   }
 
+  // Auto-archive: completed tasks older than 1 hour → archived
+  function autoArchive(store: TaskStore): boolean {
+    const now = Date.now();
+    let changed = false;
+    for (const task of store.tasks) {
+      if (task.status === 'completed' && task.completedAt) {
+        const completedTime = new Date(task.completedAt).getTime();
+        if (now - completedTime > ARCHIVE_AFTER_MS) {
+          task.status = 'archived';
+          task.updatedAt = new Date().toISOString();
+          changed = true;
+        }
+      }
+    }
+    return changed;
+  }
+
   return {
     async getTasks(filter?) {
       const store = loadStore();
+      const archived = autoArchive(store);
+      if (archived) saveStore(store);
+
       if (filter?.status) {
         return store.tasks.filter(t => t.status === filter.status);
       }
@@ -76,6 +98,12 @@ export function createTaskStore(projectDir: string): TaskStoreService {
       const idx = store.tasks.findIndex(t => t.id === id);
       if (idx === -1) throw new Error('Task not found');
       const task = store.tasks[idx];
+
+      // Track when task was completed
+      if (input.status === 'completed' && task.status !== 'completed') {
+        (task as any).completedAt = new Date().toISOString();
+      }
+
       Object.assign(task, input, { updatedAt: new Date().toISOString() });
       saveStore(store);
       return task;

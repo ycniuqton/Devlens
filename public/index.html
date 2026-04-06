@@ -155,36 +155,18 @@
           </div>
           <div class="column-cards" data-status="completed"></div>
         </div>
-      </div>
-
-      <!-- Claude Code Todos — live session activity -->
-      <div class="claude-panel">
-        <div class="claude-panel-header">
-          <div class="claude-panel-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            <h3>Claude's Current Todos</h3>
-            <span class="live-badge">LIVE</span>
+        <div class="kanban-column column-archived" data-status="archived">
+          <div class="column-header">
+            <div class="column-title">
+              <span class="column-dot archived"></span>
+              <h3>Archived</h3>
+            </div>
+            <span class="count">0</span>
           </div>
-          <span class="count" id="todo-count">0</span>
-        </div>
-        <div id="claude-todos" class="claude-panel-body">
-          <p class="panel-empty">No active todos — Claude will populate this as it works</p>
+          <div class="column-cards" data-status="archived"></div>
         </div>
       </div>
 
-      <!-- Claude Code Tasks — persistent cross-session -->
-      <div class="claude-panel">
-        <div class="claude-panel-header">
-          <div class="claude-panel-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-            <h3>Claude Sessions</h3>
-          </div>
-          <span class="count" id="session-count">0</span>
-        </div>
-        <div id="claude-sessions" class="claude-panel-body">
-          <p class="panel-empty">No session data found</p>
-        </div>
-      </div>
     </section>
 
     <!-- Integrations View -->
@@ -241,12 +223,22 @@
               <option value="pending">Pending</option>
               <option value="in-progress">In Progress</option>
               <option value="completed">Completed</option>
+              <option value="archived">Archived</option>
             </select>
           </div>
         </div>
         <div class="form-group">
           <label for="task-tags-input">Tags</label>
           <input type="text" id="task-tags-input" placeholder="bug, frontend, urgent">
+        </div>
+        <!-- Claude Code context (read-only, shown when available) -->
+        <div class="form-group" id="task-context-group" style="display:none">
+          <label>Context <span style="color:var(--color-text-muted);font-weight:400">(user prompt that triggered this task)</span></label>
+          <div id="task-context-display" class="context-display"></div>
+        </div>
+        <div class="form-group" id="task-claude-meta-group" style="display:none">
+          <label>Claude Metadata</label>
+          <div id="task-claude-meta" class="context-display" style="font-family:var(--font-mono);font-size:var(--text-xs)"></div>
         </div>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" id="modal-cancel">Cancel</button>

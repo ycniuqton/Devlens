@@ -1,16 +1,39 @@
-// Tab switching — sidebar nav
+// Tab switching — sidebar nav with URL routing
 const navItems = document.querySelectorAll('.nav-item');
 const tabContents = document.querySelectorAll('.tab-content');
 
+function switchTab(tab) {
+  navItems.forEach(n => n.classList.remove('active'));
+  tabContents.forEach(c => c.classList.remove('active'));
+  const navItem = document.querySelector(`.nav-item[data-tab="${tab}"]`);
+  if (navItem) navItem.classList.add('active');
+  const view = document.getElementById(tab + '-view');
+  if (view) view.classList.add('active');
+}
+
 navItems.forEach(item => {
   item.addEventListener('click', () => {
-    const target = item.dataset.tab;
-    navItems.forEach(n => n.classList.remove('active'));
-    tabContents.forEach(c => c.classList.remove('active'));
-    item.classList.add('active');
-    document.getElementById(target + '-view').classList.add('active');
+    const tab = item.dataset.tab;
+    switchTab(tab);
+    history.pushState(null, '', '/' + tab);
   });
 });
+
+// Handle browser back/forward
+window.addEventListener('popstate', () => {
+  const tab = location.pathname.replace('/', '') || 'diff';
+  switchTab(tab);
+});
+
+// Load initial tab from URL — redirect / to /diff
+(function() {
+  const path = location.pathname.replace('/', '');
+  const tab = ['diff', 'tasks', 'integrations'].includes(path) ? path : 'diff';
+  if (!path || path === '') {
+    history.replaceState(null, '', '/diff');
+  }
+  switchTab(tab);
+})();
 
 // WebSocket
 let ws = null;
@@ -51,12 +74,6 @@ function connectWebSocket() {
       }
       if (msg.type === 'task-update' && typeof handleTaskUpdate === 'function') {
         handleTaskUpdate(msg.payload);
-      }
-      if (msg.type === 'todo-update' && typeof handleTodoUpdate === 'function') {
-        handleTodoUpdate(msg.payload);
-      }
-      if (msg.type === 'claude-tasks-update' && typeof handleClaudeTasksUpdate === 'function') {
-        handleClaudeTasksUpdate(msg.payload);
       }
     } catch (e) {
       console.error('WebSocket message parse error:', e);

@@ -4,6 +4,9 @@ const taskForm = document.getElementById('task-form');
 let allTasks = [];
 
 document.getElementById('add-task-btn').addEventListener('click', () => openModal());
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+});
 document.getElementById('modal-cancel').addEventListener('click', () => closeModal());
 document.getElementById('modal-close').addEventListener('click', () => closeModal());
 document.querySelector('.modal-backdrop').addEventListener('click', () => closeModal());
@@ -49,6 +52,35 @@ function openModal(task = null) {
   document.getElementById('task-priority-input').value = task ? task.priority : 'medium';
   document.getElementById('task-status-input').value = task ? task.status : 'pending';
   document.getElementById('task-tags-input').value = task ? task.tags.join(', ') : '';
+
+  // Show context if available
+  const contextGroup = document.getElementById('task-context-group');
+  const contextDisplay = document.getElementById('task-context-display');
+  if (task?.context) {
+    contextDisplay.textContent = task.context;
+    contextGroup.style.display = '';
+  } else {
+    contextGroup.style.display = 'none';
+  }
+
+  // Show Claude metadata if available
+  const metaGroup = document.getElementById('task-claude-meta-group');
+  const metaDisplay = document.getElementById('task-claude-meta');
+  const metaParts = [];
+  if (task?.claudeTaskId) metaParts.push(`Task ID: #${task.claudeTaskId}`);
+  if (task?.claudeSessionId) metaParts.push(`Session: ${task.claudeSessionId.substring(0, 8)}`);
+  if (task?.activeForm) metaParts.push(`Active: ${task.activeForm}`);
+  if (task?.owner) metaParts.push(`Owner: ${task.owner}`);
+  if (task?.completedAt) metaParts.push(`Completed: ${task.completedAt}`);
+  if (task?.metadata) metaParts.push(`Metadata: ${JSON.stringify(task.metadata)}`);
+
+  if (metaParts.length > 0) {
+    metaDisplay.textContent = metaParts.join('\n');
+    metaGroup.style.display = '';
+  } else {
+    metaGroup.style.display = 'none';
+  }
+
   modal.classList.remove('hidden');
 }
 
@@ -69,7 +101,7 @@ async function loadTasks() {
 }
 
 function renderBoard() {
-  ['pending', 'in-progress', 'completed'].forEach(status => {
+  ['pending', 'in-progress', 'completed', 'archived'].forEach(status => {
     const column = document.querySelector(`.column-cards[data-status="${status}"]`);
     const tasks = allTasks.filter(t => t.status === status);
     const count = column.closest('.kanban-column').querySelector('.count');
@@ -90,8 +122,12 @@ function renderBoard() {
       </div>
     `).join('');
 
-    // Drag events
+    // Click to edit + drag events
     column.querySelectorAll('.task-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.card-actions')) return; // don't trigger on Edit/Delete buttons
+        editTask(card.dataset.id);
+      });
       card.addEventListener('dragstart', (e) => {
         e.dataTransfer.setData('text/plain', card.dataset.id);
         card.classList.add('dragging');
@@ -141,98 +177,6 @@ async function deleteTask(id) {
   }
 }
 
-// ---- Claude Todos (live, in-session) ----
-async function loadClaudeTodos() {
-  try {
-    const res = await fetch('/api/tasks/claude-todos');
-    const todos = await res.json();
-    renderClaudeTodos(todos);
-  } catch {}
-}
-
-function renderClaudeTodos(todos) {
-  const container = document.getElementById('claude-todos');
-  const countEl = document.getElementById('todo-count');
-
-  if (!todos || todos.length === 0) {
-    container.innerHTML = '<p class="panel-empty">No active todos — Claude will populate this as it works</p>';
-    if (countEl) countEl.textContent = '0';
-    return;
-  }
-
-  if (countEl) countEl.textContent = todos.length;
-
-  // Sort: in_progress first, then pending, then completed
-  const order = { in_progress: 0, pending: 1, completed: 2 };
-  todos.sort((a, b) => (order[a.status] || 1) - (order[b.status] || 1));
-
-  container.innerHTML = todos.map(todo => `
-    <div class="todo-card status-${todo.status}">
-      <div class="todo-status-icon"></div>
-      <div class="todo-content">${escapeHtml(todo.content)}</div>
-    </div>
-  `).join('');
-}
-
-function handleTodoUpdate(payload) {
-  if (payload && payload.todos) {
-    renderClaudeTodos(payload.todos);
-  }
-}
-
-// ---- Claude Sessions (persistent, cross-session) ----
-async function loadClaudeSessions() {
-  try {
-    const res = await fetch('/api/tasks/claude-sessions');
-    const sessions = await res.json();
-    renderClaudeSessions(sessions);
-  } catch {}
-}
-
-function renderClaudeSessions(sessions) {
-  const container = document.getElementById('claude-sessions');
-  const countEl = document.getElementById('session-count');
-
-  if (!sessions || sessions.length === 0) {
-    container.innerHTML = '<p class="panel-empty">No session data found</p>';
-    if (countEl) countEl.textContent = '0';
-    return;
-  }
-
-  if (countEl) countEl.textContent = sessions.length;
-
-  container.innerHTML = sessions.map(s => {
-    const name = s.name || 'Unnamed session';
-    const shortId = s.sessionId.substring(0, 8);
-    const project = s.cwd ? s.cwd.split('/').pop() : '';
-    const time = s.startedAt ? formatRelativeTime(s.startedAt) : '';
-
-    return `
-    <div class="session-card">
-      <span class="${s.active ? 'session-active' : 'session-inactive'}"></span>
-      <div class="session-info">
-        <div class="session-name">${escapeHtml(name)}</div>
-        <div class="session-details">
-          <span class="session-id">${shortId}</span>
-          ${project ? `<span class="session-project">${escapeHtml(project)}</span>` : ''}
-          ${time ? `<span class="session-time">${time}</span>` : ''}
-        </div>
-      </div>
-      <div class="session-meta">
-        <span class="session-task-count">${s.taskCount} tasks</span>
-        ${s.active ? '<span class="tag session-active-tag">active</span>' : ''}
-      </div>
-    </div>
-    `;
-  }).join('');
-}
-
-function handleClaudeTasksUpdate(payload) {
-  if (payload && payload.sessions) {
-    renderClaudeSessions(payload.sessions);
-  }
-}
-
 // ---- WebSocket handlers ----
 function handleTaskUpdate() {
   loadTasks();
@@ -244,20 +188,5 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-function formatRelativeTime(isoString) {
-  const now = Date.now();
-  const then = new Date(isoString).getTime();
-  const diff = now - then;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
 // Initial load
 loadTasks();
-loadClaudeTodos();
-loadClaudeSessions();

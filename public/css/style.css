@@ -643,6 +643,10 @@ body {
 .column-dot.pending { background: var(--color-warning); box-shadow: 0 0 8px var(--color-warning-subtle); }
 .column-dot.in-progress { background: var(--color-primary); box-shadow: 0 0 8px var(--color-primary-subtle); }
 .column-dot.completed { background: var(--color-success); box-shadow: 0 0 8px var(--color-success-subtle); }
+.column-dot.archived { background: var(--color-text-muted); }
+
+.column-archived { opacity: 0.7; }
+.column-archived .task-card { opacity: 0.6; }
 
 .column-header h3 {
   font-size: var(--text-base);
@@ -1060,6 +1064,20 @@ body {
 }
 
 .form-row .form-group { flex: 1; }
+
+.context-display {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
 .modal-actions {
   display: flex;
