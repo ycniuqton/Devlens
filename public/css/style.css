@@ -1092,9 +1092,94 @@ body {
    Integrations
    ============================================================ */
 .integrations-container {
-  max-width: 720px;
+  max-width: 800px;
   width: 100%;
 }
+
+.integration-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-6);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+
+.section-header svg { color: var(--color-text-muted); flex-shrink: 0; }
+.section-header h2 { font-size: var(--text-lg); font-weight: 600; }
+
+.section-desc {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  margin-bottom: var(--sp-5);
+  line-height: var(--leading-normal);
+}
+
+.section-hint {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  margin-top: var(--sp-3);
+}
+
+.section-hint code {
+  background: var(--color-surface-3);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+}
+
+.tunnel-status-badge {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--color-surface-3);
+  color: var(--color-text-muted);
+}
+
+.tunnel-status-badge.connected { background: var(--color-success-subtle); color: var(--color-success); }
+.tunnel-status-badge.connecting { background: var(--color-warning-subtle); color: var(--color-warning); }
+.tunnel-status-badge.error { background: var(--color-danger-subtle); color: var(--color-danger); }
+
+.tunnel-buttons { display: flex; gap: var(--sp-3); }
+
+.tunnel-active-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+
+.tunnel-url-row { display: flex; align-items: center; gap: var(--sp-3); }
+
+.tunnel-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tunnel-url {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--color-primary-hover);
+  text-decoration: none;
+}
+
+.tunnel-url:hover { text-decoration: underline; }
 
 .integration-card {
   background: var(--color-surface);

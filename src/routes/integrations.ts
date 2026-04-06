@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { loadConfig, saveConfig } from '../services/config';
 import { createJiraClient } from '../services/jira';
 import { createLinearClient } from '../services/linear';
+import { startTunnel, stopTunnel, getTunnelStatus } from '../services/tunnel';
 import { ExternalTask } from '../types';
 
 export const integrationsRouter = Router();
@@ -27,7 +28,29 @@ integrationsRouter.get('/status', (req: Request, res: Response) => {
   res.json({
     jira: !!(config.jira?.baseUrl && config.jira?.apiToken),
     linear: !!config.linear?.apiKey,
+    tunnel: getTunnelStatus(),
   });
+});
+
+// Tunnel endpoints
+integrationsRouter.get('/tunnel/status', (_req: Request, res: Response) => {
+  res.json(getTunnelStatus());
+});
+
+integrationsRouter.post('/tunnel/start', async (req: Request, res: Response) => {
+  const { provider } = req.body;
+  const port = req.app.locals.port || 5157;
+  try {
+    const url = await startTunnel(port, provider || 'cloudflare');
+    res.json({ ok: true, url, provider: provider || 'cloudflare' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+integrationsRouter.post('/tunnel/stop', (_req: Request, res: Response) => {
+  stopTunnel();
+  res.json({ ok: true });
 });
 
 integrationsRouter.get('/jira/issues', async (req: Request, res: Response) => {

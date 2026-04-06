@@ -26,6 +26,7 @@ export function createServer(options: ServerOptions) {
   app.locals.gitService = gitService;
   app.locals.taskStore = taskStore;
   app.locals.projectDir = options.projectDir;
+  app.locals.port = options.port;
 
   // API routes
   app.use('/api', diffRouter);

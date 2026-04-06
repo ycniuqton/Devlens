@@ -1,7 +1,8 @@
-import fs from 'fs';
+import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
-import { Task, CreateTaskInput, UpdateTaskInput, TaskStore } from '../types';
+import { Task, CreateTaskInput, UpdateTaskInput } from '../types';
 
 const ARCHIVE_AFTER_MS = 60 * 60 * 1000; // 1 hour
 
@@ -9,110 +10,167 @@ export interface TaskStoreService {
   getTasks(filter?: { status?: string }): Promise<Task[]>;
   getTask(id: string): Promise<Task | null>;
   createTask(input: CreateTaskInput): Promise<Task>;
-  updateTask(id: string, input: UpdateTaskInput): Promise<Task>;
+  updateTask(id: string, input: UpdateTaskInput & Record<string, any>): Promise<Task>;
   deleteTask(id: string): Promise<void>;
 }
 
 export function createTaskStore(projectDir: string): TaskStoreService {
   const devlensDir = path.join(projectDir, '.devlens');
-  const tasksFile = path.join(devlensDir, 'tasks.json');
-
-  function ensureDir() {
-    if (!fs.existsSync(devlensDir)) {
-      fs.mkdirSync(devlensDir, { recursive: true });
-    }
+  if (!fs.existsSync(devlensDir)) {
+    fs.mkdirSync(devlensDir, { recursive: true });
   }
 
-  function loadStore(): TaskStore {
-    ensureDir();
-    if (!fs.existsSync(tasksFile)) {
-      return { version: 1, tasks: [] };
-    }
-    const data = fs.readFileSync(tasksFile, 'utf-8');
-    return JSON.parse(data);
-  }
+  const dbPath = path.join(devlensDir, 'devlens.db');
+  const db = new Database(dbPath);
 
-  function saveStore(store: TaskStore) {
-    ensureDir();
-    const tmpFile = tasksFile + '.tmp';
-    fs.writeFileSync(tmpFile, JSON.stringify(store, null, 2));
-    fs.renameSync(tmpFile, tasksFile);
-  }
+  // Enable WAL mode for better concurrent read performance
+  db.pragma('journal_mode = WAL');
 
-  // Auto-archive: completed tasks older than 1 hour → archived
-  function autoArchive(store: TaskStore): boolean {
-    const now = Date.now();
-    let changed = false;
-    for (const task of store.tasks) {
-      if (task.status === 'completed' && task.completedAt) {
-        const completedTime = new Date(task.completedAt).getTime();
-        if (now - completedTime > ARCHIVE_AFTER_MS) {
-          task.status = 'archived';
-          task.updatedAt = new Date().toISOString();
-          changed = true;
-        }
-      }
-    }
-    return changed;
+  // Create tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      priority TEXT DEFAULT 'medium',
+      tags TEXT DEFAULT '[]',
+      dependencies TEXT DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      completed_at TEXT,
+      source TEXT DEFAULT 'local',
+      claude_session_id TEXT,
+      claude_task_id TEXT,
+      active_form TEXT,
+      owner TEXT,
+      metadata TEXT,
+      context TEXT
+    )
+  `);
+
+  // Prepared statements
+  const insertStmt = db.prepare(`
+    INSERT INTO tasks (id, title, description, status, priority, tags, dependencies, created_at, updated_at, source)
+    VALUES (@id, @title, @description, @status, @priority, @tags, @dependencies, @created_at, @updated_at, @source)
+  `);
+
+  const selectAllStmt = db.prepare('SELECT * FROM tasks ORDER BY created_at DESC');
+  const selectByStatusStmt = db.prepare('SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC');
+  const selectByIdStmt = db.prepare('SELECT * FROM tasks WHERE id = ?');
+  const deleteStmt = db.prepare('DELETE FROM tasks WHERE id = ?');
+
+  // Auto-archive completed tasks older than 1 hour
+  const archiveStmt = db.prepare(`
+    UPDATE tasks SET status = 'archived', updated_at = ?
+    WHERE status = 'completed' AND completed_at IS NOT NULL
+    AND (julianday(?) - julianday(completed_at)) * 86400000 > ?
+  `);
+
+  function rowToTask(row: any): Task {
+    return {
+      id: row.id,
+      title: row.title,
+      description: row.description || '',
+      status: row.status,
+      priority: row.priority,
+      tags: JSON.parse(row.tags || '[]'),
+      dependencies: JSON.parse(row.dependencies || '[]'),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      completedAt: row.completed_at || undefined,
+      source: row.source || 'local',
+      claudeSessionId: row.claude_session_id || undefined,
+      claudeTaskId: row.claude_task_id || undefined,
+      activeForm: row.active_form || undefined,
+      owner: row.owner || undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      context: row.context || undefined,
+    };
   }
 
   return {
     async getTasks(filter?) {
-      const store = loadStore();
-      const archived = autoArchive(store);
-      if (archived) saveStore(store);
+      // Auto-archive old completed tasks
+      const now = new Date().toISOString();
+      archiveStmt.run(now, now, ARCHIVE_AFTER_MS);
 
+      let rows;
       if (filter?.status) {
-        return store.tasks.filter(t => t.status === filter.status);
+        rows = selectByStatusStmt.all(filter.status);
+      } else {
+        rows = selectAllStmt.all();
       }
-      return store.tasks;
+      return rows.map(rowToTask);
     },
 
     async getTask(id) {
-      const store = loadStore();
-      return store.tasks.find(t => t.id === id) || null;
+      const row = selectByIdStmt.get(id);
+      return row ? rowToTask(row) : null;
     },
 
     async createTask(input) {
-      const store = loadStore();
       const now = new Date().toISOString();
-      const task: Task = {
-        id: crypto.randomUUID(),
+      const id = crypto.randomUUID();
+
+      insertStmt.run({
+        id,
         title: input.title,
         description: input.description || '',
         status: input.status || 'pending',
         priority: input.priority || 'medium',
-        tags: input.tags || [],
-        dependencies: input.dependencies || [],
-        createdAt: now,
-        updatedAt: now,
+        tags: JSON.stringify(input.tags || []),
+        dependencies: JSON.stringify(input.dependencies || []),
+        created_at: now,
+        updated_at: now,
         source: 'local',
-      };
-      store.tasks.push(task);
-      saveStore(store);
-      return task;
+      });
+
+      return rowToTask(selectByIdStmt.get(id));
     },
 
     async updateTask(id, input) {
-      const store = loadStore();
-      const idx = store.tasks.findIndex(t => t.id === id);
-      if (idx === -1) throw new Error('Task not found');
-      const task = store.tasks[idx];
+      const existing = selectByIdStmt.get(id) as any;
+      if (!existing) throw new Error('Task not found');
 
-      // Track when task was completed
-      if (input.status === 'completed' && task.status !== 'completed') {
-        (task as any).completedAt = new Date().toISOString();
+      const updates: string[] = [];
+      const values: any = { id };
+
+      if (input.title !== undefined) { updates.push('title = @title'); values.title = input.title; }
+      if (input.description !== undefined) { updates.push('description = @description'); values.description = input.description; }
+      if (input.status !== undefined) {
+        updates.push('status = @status');
+        values.status = input.status;
+        // Track completion time
+        if (input.status === 'completed' && existing.status !== 'completed') {
+          updates.push('completed_at = @completed_at');
+          values.completed_at = new Date().toISOString();
+        }
+      }
+      if (input.priority !== undefined) { updates.push('priority = @priority'); values.priority = input.priority; }
+      if (input.tags !== undefined) { updates.push('tags = @tags'); values.tags = JSON.stringify(input.tags); }
+      if (input.dependencies !== undefined) { updates.push('dependencies = @dependencies'); values.dependencies = JSON.stringify(input.dependencies); }
+
+      // Claude-specific fields
+      if ((input as any).claudeSessionId !== undefined) { updates.push('claude_session_id = @claude_session_id'); values.claude_session_id = (input as any).claudeSessionId; }
+      if ((input as any).claudeTaskId !== undefined) { updates.push('claude_task_id = @claude_task_id'); values.claude_task_id = (input as any).claudeTaskId; }
+      if ((input as any).activeForm !== undefined) { updates.push('active_form = @active_form'); values.active_form = (input as any).activeForm; }
+      if ((input as any).owner !== undefined) { updates.push('owner = @owner'); values.owner = (input as any).owner; }
+      if ((input as any).metadata !== undefined) { updates.push('metadata = @metadata'); values.metadata = JSON.stringify((input as any).metadata); }
+      if ((input as any).context !== undefined) { updates.push('context = @context'); values.context = (input as any).context; }
+
+      updates.push('updated_at = @updated_at');
+      values.updated_at = new Date().toISOString();
+
+      if (updates.length > 1) {
+        db.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = @id`).run(values);
       }
 
-      Object.assign(task, input, { updatedAt: new Date().toISOString() });
-      saveStore(store);
-      return task;
+      return rowToTask(selectByIdStmt.get(id));
     },
 
     async deleteTask(id) {
-      const store = loadStore();
-      store.tasks = store.tasks.filter(t => t.id !== id);
-      saveStore(store);
+      deleteStmt.run(id);
     },
   };
 }
