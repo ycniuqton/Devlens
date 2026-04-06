@@ -127,7 +127,7 @@ export function initDevlens(projectDir: string, port: number) {
     (h) => !h.hooks?.some((hk) => hk.command.includes('devlens-sync'))
   );
   settings.hooks.PostToolUse.push({
-    matcher: 'TaskCreate|TaskUpdate',
+    matcher: 'TaskCreate|TaskUpdate|TodoWrite',
     hooks: [
       {
         type: 'command',

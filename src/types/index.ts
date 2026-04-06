@@ -83,6 +83,6 @@ export interface DevlensConfig {
 }
 
 export interface WsMessage {
-  type: 'file-changed' | 'diff-update' | 'status-update' | 'task-update';
+  type: 'file-changed' | 'diff-update' | 'status-update' | 'task-update' | 'todo-update' | 'claude-tasks-update';
   payload: unknown;
 }

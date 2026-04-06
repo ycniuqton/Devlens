@@ -1,9 +1,22 @@
 // Diff viewer
 let currentFilter = 'all';
 let currentViewMode = 'line-by-line';
-let fileListMode = 'flat'; // 'flat' or 'tree'
-let diffFiles = []; // parsed per-file diffs
-let currentFiles = []; // file status list
+let fileListMode = localStorage.getItem('devlens-file-view') || 'flat';
+let diffFiles = [];
+let currentFiles = [];
+
+// Restore file list view mode from localStorage
+(function restoreFileViewMode() {
+  const flatBtn = document.getElementById('file-view-flat');
+  const treeBtn = document.getElementById('file-view-tree');
+  if (fileListMode === 'tree') {
+    treeBtn?.classList.add('active');
+    flatBtn?.classList.remove('active');
+  } else {
+    flatBtn?.classList.add('active');
+    treeBtn?.classList.remove('active');
+  }
+})();
 
 // Filter and view toggle
 document.querySelector('.header-actions')?.addEventListener('click', (e) => {
@@ -25,10 +38,10 @@ document.querySelector('.header-actions')?.addEventListener('click', (e) => {
   }
 });
 
-// File list click → expand that file, collapse others
+// File list click → collapse all, expand clicked, scroll to it
 document.getElementById('file-list-items').addEventListener('click', (e) => {
   const li = e.target.closest('li');
-  if (!li || li.classList.contains('empty-state-inline')) return;
+  if (!li || li.classList.contains('empty-state-inline') || li.classList.contains('tree-folder')) return;
 
   const fileName = li.getAttribute('title');
   if (!fileName) return;
@@ -36,17 +49,25 @@ document.getElementById('file-list-items').addEventListener('click', (e) => {
   document.querySelectorAll('#file-list-items li').forEach(l => l.classList.remove('selected'));
   li.classList.add('selected');
 
-  // Find and expand the matching file section
+  // Collapse all, expand only the clicked file
   const sections = document.querySelectorAll('.diff-file-section');
-  sections.forEach(section => {
-    const name = section.dataset.file;
-    if (name === fileName) {
+  for (const section of sections) {
+    if (section.dataset.file === fileName) {
       section.classList.add('expanded');
-      section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } else {
       section.classList.remove('expanded');
     }
-  });
+  }
+
+  // Wait for reflow, then scroll with fixed header offset
+  setTimeout(() => {
+    const target = document.querySelector(`.diff-file-section[data-file="${fileName}"]`);
+    if (target) {
+      const headerOffset = 80;
+      const top = target.getBoundingClientRect().top + window.scrollY - headerOffset;
+      window.scrollTo({ top, behavior: 'smooth' });
+    }
+  }, 50);
 });
 
 // Word wrap toggle
@@ -56,15 +77,17 @@ document.getElementById('toggle-wrap')?.addEventListener('click', (e) => {
   document.getElementById('diff-output').classList.toggle('word-wrap');
 });
 
-// File list view mode toggles
+// File list view mode toggles — persist to localStorage
 document.getElementById('file-view-flat')?.addEventListener('click', () => {
   fileListMode = 'flat';
+  localStorage.setItem('devlens-file-view', 'flat');
   document.getElementById('file-view-flat').classList.add('active');
   document.getElementById('file-view-tree').classList.remove('active');
   renderFileList(currentFiles);
 });
 document.getElementById('file-view-tree')?.addEventListener('click', () => {
   fileListMode = 'tree';
+  localStorage.setItem('devlens-file-view', 'tree');
   document.getElementById('file-view-tree').classList.add('active');
   document.getElementById('file-view-flat').classList.remove('active');
   renderFileList(currentFiles);
@@ -84,7 +107,6 @@ async function loadDiff() {
   }
 }
 
-// Split a unified diff string into per-file chunks
 function splitDiffByFile(rawDiff) {
   if (!rawDiff || !rawDiff.trim()) return [];
 
@@ -95,7 +117,6 @@ function splitDiffByFile(rawDiff) {
   for (const line of lines) {
     if (line.startsWith('diff --git')) {
       if (current) files.push(current);
-      // Extract filename from "diff --git a/path b/path"
       const match = line.match(/diff --git a\/(.*) b\/(.*)/);
       current = {
         name: match ? match[2] : 'unknown',
@@ -130,7 +151,7 @@ function renderAllFiles() {
 
   const outputFormat = currentViewMode === 'side-by-side' ? 'side-by-side' : 'line-by-line';
 
-  // First file expanded by default
+  // First file expanded, rest collapsed
   container.innerHTML = diffFiles.map((file, i) => {
     const diffHtml = Diff2Html.html(file.diff, {
       drawFileList: false,
@@ -156,6 +177,7 @@ function renderAllFiles() {
   }).join('');
 }
 
+// Chevron click — toggle just this file, don't touch others
 function toggleFileSection(headerEl) {
   const section = headerEl.closest('.diff-file-section');
   section.classList.toggle('expanded');
@@ -176,8 +198,8 @@ function renderFileList(files) {
   if (fileListMode === 'tree') {
     list.innerHTML = renderTreeView(files);
   } else {
-    list.innerHTML = files.map((f, i) => `
-      <li title="${f.path}" role="button" tabindex="0" class="${i === 0 ? 'selected' : ''}">
+    list.innerHTML = files.map(f => `
+      <li title="${f.path}" role="button" tabindex="0">
         <span class="status-badge ${f.status}"></span>
         <span class="file-name">${f.path.split('/').pop()}</span>
         ${f.staged ? '<span class="tag">staged</span>' : ''}
@@ -187,7 +209,6 @@ function renderFileList(files) {
 }
 
 function renderTreeView(files) {
-  // Build folder tree
   const tree = {};
   for (const f of files) {
     const parts = f.path.split('/');
@@ -201,7 +222,6 @@ function renderTreeView(files) {
 
   function renderNode(obj, depth) {
     let html = '';
-    // Folders first, then files
     const folders = Object.keys(obj).filter(k => typeof obj[k] === 'object' && !obj[k].path);
     const fileKeys = Object.keys(obj).filter(k => typeof obj[k] === 'object' && obj[k].path);
 
@@ -231,13 +251,10 @@ function renderTreeView(files) {
 }
 
 function handleDiffUpdate(payload) {
-  // Re-fetch full diff on file change
   loadDiff();
 }
 
-function handleStatusUpdate(payload) {
-  // Status updates handled by loadDiff
-}
+function handleStatusUpdate(payload) {}
 
 // Initial load
 loadDiff();

@@ -1,10 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { TaskStoreService } from '../services/taskStore';
 import { WsMessage } from '../types';
+import { getTodos, upsertTodo, parseTodoWritePayload, readClaudeTaskSessions } from '../services/claudeTasks';
 
 export const tasksRouter = Router();
 
-// Sync endpoint — receives Claude Code hook payloads (PostToolUse on TaskCreate/TaskUpdate)
+// Sync endpoint — receives Claude Code hook payloads
 tasksRouter.post('/sync', async (req: Request, res: Response) => {
   const store: TaskStoreService = req.app.locals.taskStore;
   const broadcast: (msg: WsMessage) => void = req.app.locals.broadcast;
@@ -12,12 +13,22 @@ tasksRouter.post('/sync', async (req: Request, res: Response) => {
   try {
     const { tool_name, tool_input, tool_output } = req.body;
 
-    if (!tool_name || !tool_output) {
+    if (!tool_name) {
       return res.status(400).json({ error: 'Invalid hook payload' });
     }
 
-    // Extract the Claude Code task ID from the output message
-    const outputStr = typeof tool_output === 'string' ? tool_output : JSON.stringify(tool_output);
+    // --- TodoWrite: Claude's ephemeral todos ---
+    if (tool_name === 'TodoWrite') {
+      const todos = parseTodoWritePayload(tool_input);
+      for (const todo of todos) {
+        upsertTodo(todo);
+      }
+      if (broadcast) broadcast({ type: 'todo-update', payload: { todos: getTodos() } });
+      return res.json({ ok: true });
+    }
+
+    // --- TaskCreate / TaskUpdate: Claude's managed tasks ---
+    const outputStr = typeof tool_output === 'string' ? tool_output : JSON.stringify(tool_output || '');
     const idMatch = outputStr.match(/#(\d+)/);
     const claudeTaskId = idMatch ? idMatch[1] : null;
 
@@ -25,7 +36,6 @@ tasksRouter.post('/sync', async (req: Request, res: Response) => {
       const subject = tool_input?.subject || tool_input?.title || 'Untitled';
       const description = tool_input?.description || '';
 
-      // Check if this Claude task already exists (by matching claude_task_id in tags)
       const existing = await store.getTasks();
       const found = existing.find(t => t.tags.includes(`claude:${claudeTaskId}`));
 
@@ -45,7 +55,6 @@ tasksRouter.post('/sync', async (req: Request, res: Response) => {
       const status = tool_input?.status;
       const claudeId = tool_input?.taskId;
 
-      // Find the matching Devlens task by claude tag
       const existing = await store.getTasks();
       const found = existing.find(t => t.tags.includes(`claude:${claudeId}`));
 
@@ -68,6 +77,17 @@ tasksRouter.post('/sync', async (req: Request, res: Response) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// GET /api/tasks/claude-todos — current session todos
+tasksRouter.get('/claude-todos', (_req: Request, res: Response) => {
+  res.json(getTodos());
+});
+
+// GET /api/tasks/claude-sessions — cross-session task data
+tasksRouter.get('/claude-sessions', (_req: Request, res: Response) => {
+  const sessions = readClaudeTaskSessions();
+  res.json(sessions);
 });
 
 tasksRouter.get('/', async (req: Request, res: Response) => {

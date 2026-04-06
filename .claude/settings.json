@@ -2,7 +2,7 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "TaskCreate|TaskUpdate",
+        "matcher": "TaskCreate|TaskUpdate|TodoWrite",
         "hooks": [
           {
             "type": "command",

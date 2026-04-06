@@ -52,6 +52,12 @@ function connectWebSocket() {
       if (msg.type === 'task-update' && typeof handleTaskUpdate === 'function') {
         handleTaskUpdate(msg.payload);
       }
+      if (msg.type === 'todo-update' && typeof handleTodoUpdate === 'function') {
+        handleTodoUpdate(msg.payload);
+      }
+      if (msg.type === 'claude-tasks-update' && typeof handleClaudeTasksUpdate === 'function') {
+        handleClaudeTasksUpdate(msg.payload);
+      }
     } catch (e) {
       console.error('WebSocket message parse error:', e);
     }

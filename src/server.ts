@@ -6,6 +6,7 @@ import { ServerOptions, WsMessage } from './types';
 import { createGitService } from './services/git';
 import { createWatcher } from './services/watcher';
 import { createTaskStore } from './services/taskStore';
+import { watchClaudeTasks } from './services/claudeTasks';
 import { diffRouter } from './routes/diff';
 import { tasksRouter } from './routes/tasks';
 import { integrationsRouter } from './routes/integrations';
@@ -63,9 +64,15 @@ export function createServer(options: ServerOptions) {
     }
   });
 
-  // Attach broadcast and watcher for cleanup
+  // Watch ~/.claude/tasks/ for cross-session task changes
+  const claudeTasksWatcher = watchClaudeTasks((sessions) => {
+    broadcast({ type: 'claude-tasks-update', payload: { sessions } });
+  });
+
+  // Attach broadcast and watchers for cleanup
   app.locals.broadcast = broadcast;
   app.locals.watcher = watcher;
+  app.locals.claudeTasksWatcher = claudeTasksWatcher;
 
   return { app, httpServer, wss };
 }

@@ -235,13 +235,11 @@ body {
 }
 
 /* ============================================================
-   Main Content
+   Main Content — page body scrolls, sidebar/header/filelist fixed
    ============================================================ */
 #main-content {
   margin-left: var(--sidebar-width);
-  flex: 1;
   min-height: 100vh;
-  overflow: hidden;
   width: calc(100vw - var(--sidebar-width));
 }
 
@@ -249,25 +247,25 @@ body {
   display: none;
   flex-direction: column;
   padding: var(--sp-8);
-  height: 100vh;
-  overflow: hidden;
+  padding-top: 72px; /* space for fixed header */
+  min-height: 100vh;
 }
 
 .tab-content.active { display: flex; }
-#tasks-view, #integrations-view { overflow-y: auto; }
 
-/* View Header */
+/* View Header — fixed at top */
 .view-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--sp-6);
-  flex-shrink: 0;
-  position: sticky;
+  position: fixed;
   top: 0;
-  z-index: 10;
+  left: var(--sidebar-width);
+  right: 0;
+  z-index: 20;
   background: var(--color-bg);
-  padding: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-8);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .view-header h1 {
@@ -371,19 +369,21 @@ body {
   display: flex;
   gap: var(--sp-4);
   flex: 1;
-  overflow: hidden;
   min-width: 0;
 }
 
 .file-list {
-  width: 260px;
-  flex-shrink: 0;
+  width: 240px;
+  position: fixed;
+  top: 68px; /* below fixed header */
+  bottom: var(--sp-8);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  z-index: 15;
 }
 
 .file-list-header {
@@ -506,11 +506,8 @@ body {
 
 .diff-output {
   flex: 1;
-  overflow-y: auto;
+  margin-left: 256px; /* file-list width + gap */
   overflow-x: hidden;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
   min-width: 0;
 }
 
@@ -586,8 +583,7 @@ body {
 
 .diff-file-body {
   display: none;
-  max-height: 600px;
-  overflow: auto;
+  overflow-x: auto;
 }
 
 .diff-file-section.expanded .diff-file-body { display: block; }
@@ -772,6 +768,155 @@ body {
 
 .card-actions button:hover { color: var(--color-text); background: var(--color-surface-hover); }
 .card-actions button.delete:hover { color: var(--color-danger); background: var(--color-danger-subtle); border-color: rgba(239,68,68,0.3); }
+
+/* ============================================================
+   Claude Panels (Todos + Sessions)
+   ============================================================ */
+.claude-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-4);
+  overflow: hidden;
+}
+
+.claude-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.claude-panel-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.claude-panel-title h3 {
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.claude-panel-title svg { color: var(--color-text-muted); flex-shrink: 0; }
+
+.live-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-success);
+  background: var(--color-success-subtle);
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.claude-panel-body {
+  padding: var(--sp-3);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.panel-empty {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+  padding: var(--sp-6);
+}
+
+/* Todo card */
+.todo-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--sp-1);
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.todo-card:hover { background: var(--color-surface-hover); }
+
+.todo-status-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--color-text-muted);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.todo-card.status-in_progress .todo-status-icon {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+}
+
+.todo-card.status-completed .todo-status-icon {
+  border-color: var(--color-success);
+  background: var(--color-success);
+}
+
+.todo-content {
+  flex: 1;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  line-height: var(--leading-normal);
+}
+
+.todo-card.status-completed .todo-content {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
+}
+
+/* Session card */
+.session-card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--sp-1);
+}
+
+.session-card:hover { background: var(--color-surface-hover); }
+
+.session-id {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-meta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.session-active {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-success);
+  box-shadow: 0 0 6px var(--color-success-subtle);
+}
+
+.session-inactive {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-text-muted);
+}
 
 /* ============================================================
    Modal
@@ -972,10 +1117,12 @@ body {
   .brand-name, .nav-item span, .status-label { display: none; }
   .sidebar-brand { justify-content: center; margin-bottom: var(--sp-4); }
   .nav-item { justify-content: center; padding: var(--sp-3); }
-  #main-content { margin-left: var(--sidebar-collapsed); }
+  #main-content { margin-left: var(--sidebar-collapsed); width: calc(100vw - var(--sidebar-collapsed)); }
+  .view-header { left: var(--sidebar-collapsed); }
   .kanban-board { flex-direction: column; }
   .kanban-column { min-width: unset; max-height: none; }
   .diff-container { flex-direction: column; }
-  .file-list { width: 100%; max-height: 200px; }
+  .file-list { position: static; width: 100%; max-height: 200px; bottom: auto; }
+  .diff-output { margin-left: 0; }
   .form-row { flex-direction: column; gap: 0; }
 }

@@ -1,4 +1,4 @@
-// Task board
+// Task board + Claude Todos/Sessions
 const modal = document.getElementById('task-modal');
 const taskForm = document.getElementById('task-form');
 let allTasks = [];
@@ -57,6 +57,7 @@ function closeModal() {
   taskForm.reset();
 }
 
+// ---- Kanban Board ----
 async function loadTasks() {
   try {
     const res = await fetch('/api/tasks');
@@ -77,7 +78,7 @@ function renderBoard() {
     column.innerHTML = tasks.map(task => `
       <div class="task-card priority-${task.priority}" draggable="true" data-id="${task.id}">
         <div class="task-title">${escapeHtml(task.title)}</div>
-        ${task.description ? `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">${escapeHtml(task.description).substring(0, 100)}</div>` : ''}
+        ${task.description ? `<div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:6px">${escapeHtml(task.description).substring(0, 100)}</div>` : ''}
         <div class="task-meta">
           ${task.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}
         </div>
@@ -89,7 +90,7 @@ function renderBoard() {
       </div>
     `).join('');
 
-    // Drag events on cards
+    // Drag events
     column.querySelectorAll('.task-card').forEach(card => {
       card.addEventListener('dragstart', (e) => {
         e.dataTransfer.setData('text/plain', card.dataset.id);
@@ -140,6 +141,88 @@ async function deleteTask(id) {
   }
 }
 
+// ---- Claude Todos (live, in-session) ----
+async function loadClaudeTodos() {
+  try {
+    const res = await fetch('/api/tasks/claude-todos');
+    const todos = await res.json();
+    renderClaudeTodos(todos);
+  } catch {}
+}
+
+function renderClaudeTodos(todos) {
+  const container = document.getElementById('claude-todos');
+  const countEl = document.getElementById('todo-count');
+
+  if (!todos || todos.length === 0) {
+    container.innerHTML = '<p class="panel-empty">No active todos — Claude will populate this as it works</p>';
+    if (countEl) countEl.textContent = '0';
+    return;
+  }
+
+  if (countEl) countEl.textContent = todos.length;
+
+  // Sort: in_progress first, then pending, then completed
+  const order = { in_progress: 0, pending: 1, completed: 2 };
+  todos.sort((a, b) => (order[a.status] || 1) - (order[b.status] || 1));
+
+  container.innerHTML = todos.map(todo => `
+    <div class="todo-card status-${todo.status}">
+      <div class="todo-status-icon"></div>
+      <div class="todo-content">${escapeHtml(todo.content)}</div>
+    </div>
+  `).join('');
+}
+
+function handleTodoUpdate(payload) {
+  if (payload && payload.todos) {
+    renderClaudeTodos(payload.todos);
+  }
+}
+
+// ---- Claude Sessions (persistent, cross-session) ----
+async function loadClaudeSessions() {
+  try {
+    const res = await fetch('/api/tasks/claude-sessions');
+    const sessions = await res.json();
+    renderClaudeSessions(sessions);
+  } catch {}
+}
+
+function renderClaudeSessions(sessions) {
+  const container = document.getElementById('claude-sessions');
+  const countEl = document.getElementById('session-count');
+
+  if (!sessions || sessions.length === 0) {
+    container.innerHTML = '<p class="panel-empty">No session data found</p>';
+    if (countEl) countEl.textContent = '0';
+    return;
+  }
+
+  if (countEl) countEl.textContent = sessions.length;
+
+  // Sort: active (locked) first
+  sessions.sort((a, b) => (b.lockExists ? 1 : 0) - (a.lockExists ? 1 : 0));
+
+  container.innerHTML = sessions.map(s => `
+    <div class="session-card">
+      <span class="${s.lockExists ? 'session-active' : 'session-inactive'}"></span>
+      <span class="session-id">${s.sessionId.substring(0, 8)}...</span>
+      <div class="session-meta">
+        <span>Tasks: ${s.highwatermark}</span>
+        ${s.lockExists ? '<span class="tag" style="color:var(--color-success)">active</span>' : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function handleClaudeTasksUpdate(payload) {
+  if (payload && payload.sessions) {
+    renderClaudeSessions(payload.sessions);
+  }
+}
+
+// ---- WebSocket handlers ----
 function handleTaskUpdate() {
   loadTasks();
 }
@@ -152,3 +235,5 @@ function escapeHtml(str) {
 
 // Initial load
 loadTasks();
+loadClaudeTodos();
+loadClaudeSessions();
