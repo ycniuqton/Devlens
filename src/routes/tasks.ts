@@ -11,7 +11,8 @@ tasksRouter.post('/sync', async (req: Request, res: Response) => {
   const broadcast: (msg: WsMessage) => void = req.app.locals.broadcast;
 
   try {
-    const { tool_name, tool_input, tool_output } = req.body;
+    // Claude Code hook payload: { tool_name, tool_input, tool_response, session_id, ... }
+    const { tool_name, tool_input, tool_response, tool_output } = req.body;
 
     if (!tool_name) {
       return res.status(400).json({ error: 'Invalid hook payload' });
@@ -27,28 +28,36 @@ tasksRouter.post('/sync', async (req: Request, res: Response) => {
       return res.json({ ok: true });
     }
 
-    // --- TaskCreate / TaskUpdate: Claude's managed tasks ---
-    const outputStr = typeof tool_output === 'string' ? tool_output : JSON.stringify(tool_output || '');
-    const idMatch = outputStr.match(/#(\d+)/);
-    const claudeTaskId = idMatch ? idMatch[1] : null;
+    // --- Extract Claude task ID from response ---
+    // Real hook: tool_response.task.id = "10"
+    // Simulated: tool_output = "Task #10 created successfully"
+    let claudeTaskId: string | null = null;
+    if (tool_response?.task?.id) {
+      claudeTaskId = String(tool_response.task.id);
+    } else {
+      const outputStr = typeof tool_output === 'string' ? tool_output : JSON.stringify(tool_output || '');
+      const idMatch = outputStr.match(/#(\d+)/);
+      claudeTaskId = idMatch ? idMatch[1] : null;
+    }
 
     if (tool_name === 'TaskCreate') {
       const subject = tool_input?.subject || tool_input?.title || 'Untitled';
       const description = tool_input?.description || '';
 
-      const existing = await store.getTasks();
-      const found = existing.find(t => t.tags.includes(`claude:${claudeTaskId}`));
-
-      if (!found) {
-        const task = await store.createTask({
-          title: subject,
-          description,
-          status: 'pending',
-          priority: 'medium',
-          tags: claudeTaskId ? [`claude:${claudeTaskId}`] : [],
-        });
-        if (broadcast) broadcast({ type: 'task-update', payload: { action: 'created', task } });
+      if (claudeTaskId) {
+        const existing = await store.getTasks();
+        const found = existing.find(t => t.tags.includes(`claude:${claudeTaskId}`));
+        if (found) return res.json({ ok: true }); // already exists
       }
+
+      const task = await store.createTask({
+        title: subject,
+        description,
+        status: 'pending',
+        priority: 'medium',
+        tags: claudeTaskId ? [`claude:${claudeTaskId}`] : [],
+      });
+      if (broadcast) broadcast({ type: 'task-update', payload: { action: 'created', task } });
     }
 
     if (tool_name === 'TaskUpdate') {
