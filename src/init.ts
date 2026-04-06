@@ -1,11 +1,18 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+
+// Derive a stable port from the project directory path (range 4700-5700)
+export function portFromDir(dir: string): number {
+  const hash = crypto.createHash('md5').update(path.resolve(dir)).digest();
+  return 4700 + (hash.readUInt16BE(0) % 1000);
+}
 
 const SYNC_HOOK_SCRIPT = `#!/bin/bash
 # Devlens Claude Code hook — syncs task changes to the Devlens dashboard
 # Installed by: devlens init
 
-DEVLENS_PORT=\${DEVLENS_PORT:-4700}
+DEVLENS_PORT=__PORT__
 DEVLENS_URL="http://localhost:\$DEVLENS_PORT/api/tasks/sync"
 
 INPUT=$(cat)
@@ -19,41 +26,39 @@ exit 0
 `;
 
 const STARTUP_HOOK_SCRIPT = `#!/bin/bash
-# Devlens Claude Code hook — auto-starts the dashboard on session start
-# Installed by: devlens init
-
-DEVLENS_PORT=\${DEVLENS_PORT:-4700}
+# Devlens — auto-start dashboard on Claude Code session start
+DEVLENS_PORT=__PORT__
 PROJECT_DIR="\${CLAUDE_PROJECT_DIR:-.}"
+RUNTIME_FILE="\$PROJECT_DIR/.devlens/runtime.json"
 
-# Check if Devlens is already running on this port
-if curl -s -o /dev/null -w "%{http_code}" "http://localhost:\$DEVLENS_PORT" 2>/dev/null | grep -q "200"; then
-  exit 0
+# Already running? Check runtime file + verify process alive
+if [ -f "\$RUNTIME_FILE" ]; then
+  PORT=\$(grep -o '"port":[0-9]*' "\$RUNTIME_FILE" | cut -d: -f2)
+  if curl -s -o /dev/null -w "%{http_code}" "http://localhost:\$PORT" 2>/dev/null | grep -q "200"; then
+    URLS=\$(grep -o '"ips":\\[[^]]*\\]' "\$RUNTIME_FILE" | sed 's/"ips":\\[//;s/\\]//;s/"//g')
+    echo "{\\"additionalContext\\":\\"Devlens dashboard is running at http://localhost:\$PORT . Network IPs: \$URLS (port \$PORT). Use devlens status for details.\\"}"
+    exit 0
+  fi
 fi
 
-# Find devlens binary — check common locations
-DEVLENS_BIN=""
-if command -v devlens &>/dev/null; then
-  DEVLENS_BIN="devlens"
-elif [ -f "\$PROJECT_DIR/dist/index.js" ]; then
-  DEVLENS_BIN="node \$PROJECT_DIR/dist/index.js"
-elif [ -f "\$PROJECT_DIR/node_modules/.bin/devlens" ]; then
-  DEVLENS_BIN="\$PROJECT_DIR/node_modules/.bin/devlens"
-fi
+# Find binary
+BIN=""
+command -v devlens &>/dev/null && BIN="devlens"
+[ -z "\$BIN" ] && [ -f "\$PROJECT_DIR/dist/index.js" ] && BIN="node \$PROJECT_DIR/dist/index.js"
+[ -z "\$BIN" ] && [ -f "\$PROJECT_DIR/node_modules/.bin/devlens" ] && BIN="\$PROJECT_DIR/node_modules/.bin/devlens"
+[ -z "\$BIN" ] && exit 0
 
-if [ -z "\$DEVLENS_BIN" ]; then
-  exit 0
-fi
+# Start in background
+nohup \$BIN start --dir "\$PROJECT_DIR" --port \$DEVLENS_PORT --no-open > /tmp/devlens-\$DEVLENS_PORT.log 2>&1 &
 
-# Start Devlens in background, detached from session
-nohup \$DEVLENS_BIN start --dir "\$PROJECT_DIR" --port \$DEVLENS_PORT --no-open > /tmp/devlens.log 2>&1 &
-
-# Wait briefly for server to come up
-sleep 2
-
-if curl -s -o /dev/null -w "%{http_code}" "http://localhost:\$DEVLENS_PORT" 2>/dev/null | grep -q "200"; then
-  echo '{"additionalContext":"Devlens dashboard is running at http://localhost:'\$DEVLENS_PORT'"}'
-fi
-
+# Wait up to 5s for runtime.json to appear
+for i in 1 2 3 4 5; do
+  sleep 1
+  if [ -f "\$RUNTIME_FILE" ]; then
+    echo "{\\"additionalContext\\":\\"Devlens dashboard started at http://localhost:\$DEVLENS_PORT . Use devlens status for all URLs.\\"}"
+    exit 0
+  fi
+done
 exit 0
 `;
 
@@ -72,8 +77,11 @@ interface SettingsJson {
   [key: string]: any;
 }
 
-export function initDevlens(projectDir: string, port: number) {
-  const claudeDir = path.join(projectDir, '.claude');
+export function initDevlens(projectDir: string, port?: number) {
+  const resolvedDir = path.resolve(projectDir);
+  const derivedPort = port || portFromDir(resolvedDir);
+
+  const claudeDir = path.join(resolvedDir, '.claude');
   const hooksDir = path.join(claudeDir, 'hooks');
   const settingsFile = path.join(claudeDir, 'settings.json');
   const syncScriptPath = path.join(hooksDir, 'devlens-sync.sh');
@@ -84,12 +92,13 @@ export function initDevlens(projectDir: string, port: number) {
     fs.mkdirSync(hooksDir, { recursive: true });
   }
 
-  // 2. Write hook scripts
-  const portStr = String(port);
-  fs.writeFileSync(syncScriptPath, SYNC_HOOK_SCRIPT.replace('4700', portStr), { mode: 0o755 });
+  // 2. Write hook scripts with the project-specific port
+  const portStr = String(derivedPort);
+
+  fs.writeFileSync(syncScriptPath, SYNC_HOOK_SCRIPT.replace('__PORT__', portStr), { mode: 0o755 });
   console.log(`  Created hook: .claude/hooks/devlens-sync.sh (task sync)`);
 
-  fs.writeFileSync(startupScriptPath, STARTUP_HOOK_SCRIPT.replace('4700', portStr), { mode: 0o755 });
+  fs.writeFileSync(startupScriptPath, STARTUP_HOOK_SCRIPT.replace(/__PORT__/g, portStr), { mode: 0o755 });
   console.log(`  Created hook: .claude/hooks/devlens-startup.sh (auto-start)`);
 
   // 3. Update .claude/settings.json
@@ -102,7 +111,7 @@ export function initDevlens(projectDir: string, port: number) {
     settings.hooks = {};
   }
 
-  // --- SessionStart hook: auto-start dashboard ---
+  // --- SessionStart hook ---
   if (!settings.hooks.SessionStart) {
     settings.hooks.SessionStart = [];
   }
@@ -119,7 +128,7 @@ export function initDevlens(projectDir: string, port: number) {
     ],
   });
 
-  // --- PostToolUse hook: task sync ---
+  // --- PostToolUse hook ---
   if (!settings.hooks.PostToolUse) {
     settings.hooks.PostToolUse = [];
   }
@@ -140,7 +149,7 @@ export function initDevlens(projectDir: string, port: number) {
   console.log(`  Updated hooks config: .claude/settings.json`);
 
   // 4. Add .claude/hooks/ to .gitignore if not already there
-  const gitignorePath = path.join(projectDir, '.gitignore');
+  const gitignorePath = path.join(resolvedDir, '.gitignore');
   if (fs.existsSync(gitignorePath)) {
     const gitignore = fs.readFileSync(gitignorePath, 'utf-8');
     if (!gitignore.includes('.claude/hooks/')) {
@@ -149,10 +158,51 @@ export function initDevlens(projectDir: string, port: number) {
     }
   }
 
-  console.log(`\n  Devlens hooks installed!`);
-  console.log(`  - Dashboard auto-starts when Claude Code opens a session`);
-  console.log(`  - Tasks auto-sync to the kanban board`);
-  console.log(`  - Dashboard: http://localhost:${port}\n`);
+  // 5. Create /devlens slash command skill
+  const skillDir = path.join(claudeDir, 'skills', 'devlens');
+  if (!fs.existsSync(skillDir)) {
+    fs.mkdirSync(skillDir, { recursive: true });
+  }
+  const skillContent = `---
+name: devlens
+description: Show the Devlens dashboard URL and status
+---
+
+Show the Devlens dashboard status by reading the runtime file:
+
+\`\`\`!
+cat "$CLAUDE_PROJECT_DIR/.devlens/runtime.json" 2>/dev/null || echo "NOT_RUNNING"
+\`\`\`
+
+If the output is NOT_RUNNING, tell the user Devlens is not running and suggest they restart their Claude Code session.
+
+Otherwise, parse the JSON and display a clean summary:
+- Local URL: http://localhost:{port}
+- Network URLs: http://{each ip}:{port}
+- PID and start time
+`;
+  fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
+  console.log(`  Created skill: .claude/skills/devlens (use /devlens in Claude)`);
+
+  // Get network IPs for display
+  const os = require('os');
+  const interfaces = os.networkInterfaces();
+  const ips: string[] = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        ips.push(iface.address);
+      }
+    }
+  }
+
+  console.log(`\n  \x1b[32m\x1b[1mDevlens installed!\x1b[0m\n`);
+  console.log(`  \x1b[2mLocal:\x1b[0m   \x1b[1m\x1b[36mhttp://localhost:${derivedPort}\x1b[0m`);
+  for (const ip of ips) {
+    console.log(`  \x1b[2mNetwork:\x1b[0m \x1b[1m\x1b[36mhttp://${ip}:${derivedPort}\x1b[0m`);
+  }
+  console.log(`\n  Dashboard auto-starts when Claude Code opens a session.`);
+  console.log(`  Tasks and todos sync automatically via hooks.\n`);
 }
 
 export function uninstallDevlens(projectDir: string) {
@@ -160,7 +210,13 @@ export function uninstallDevlens(projectDir: string) {
   const hooksDir = path.join(claudeDir, 'hooks');
   const settingsFile = path.join(claudeDir, 'settings.json');
 
-  // Remove hook scripts
+  // Remove skill
+  const skillDir = path.join(claudeDir, 'skills', 'devlens');
+  if (fs.existsSync(skillDir)) {
+    fs.rmSync(skillDir, { recursive: true });
+    console.log(`  Removed: .claude/skills/devlens`);
+  }
+
   for (const script of ['devlens-sync.sh', 'devlens-startup.sh']) {
     const scriptPath = path.join(hooksDir, script);
     if (fs.existsSync(scriptPath)) {
@@ -169,13 +225,12 @@ export function uninstallDevlens(projectDir: string) {
     }
   }
 
-  // Remove hooks from settings
   if (fs.existsSync(settingsFile)) {
     const settings: SettingsJson = JSON.parse(fs.readFileSync(settingsFile, 'utf-8'));
 
     if (settings.hooks?.SessionStart) {
       settings.hooks.SessionStart = settings.hooks.SessionStart.filter(
-        (h) => !h.hooks?.some((hk) => hk.command.includes('devlens-startup'))
+        (h) => !h.command?.includes('devlens-startup') && !h.hooks?.some((hk) => hk.command.includes('devlens-startup'))
       );
       if (settings.hooks.SessionStart.length === 0) delete settings.hooks.SessionStart;
     }

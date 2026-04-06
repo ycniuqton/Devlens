@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { TaskStoreService } from '../services/taskStore';
 import { WsMessage } from '../types';
-import { getTodos, upsertTodo, parseTodoWritePayload, readClaudeTaskSessions } from '../services/claudeTasks';
+import { getTodos, upsertTodo, parseTodoWritePayload, readClaudeSessions, clearTodos } from '../services/claudeTasks';
 
 export const tasksRouter = Router();
 
@@ -84,10 +84,21 @@ tasksRouter.get('/claude-todos', (_req: Request, res: Response) => {
   res.json(getTodos());
 });
 
-// GET /api/tasks/claude-sessions — cross-session task data
-tasksRouter.get('/claude-sessions', (_req: Request, res: Response) => {
-  const sessions = readClaudeTaskSessions();
-  res.json(sessions);
+// GET /api/tasks/claude-sessions — only sessions for this project directory
+tasksRouter.get('/claude-sessions', (req: Request, res: Response) => {
+  const projectDir: string = req.app.locals.projectDir;
+  const allSessions = readClaudeSessions();
+  // Filter to only sessions that ran in this project directory
+  const filtered = allSessions.filter(s => s.cwd === projectDir);
+  res.json(filtered);
+});
+
+// POST /api/tasks/claude-todos/clear — clear in-memory todos
+tasksRouter.post('/claude-todos/clear', (_req: Request, res: Response) => {
+  clearTodos();
+  const broadcast: (msg: WsMessage) => void = _req.app.locals.broadcast;
+  if (broadcast) broadcast({ type: 'todo-update', payload: { todos: [] } });
+  res.json({ ok: true });
 });
 
 tasksRouter.get('/', async (req: Request, res: Response) => {

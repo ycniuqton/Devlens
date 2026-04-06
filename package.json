@@ -13,6 +13,11 @@
   },
   "keywords": ["git", "diff", "dashboard", "kanban", "devtools"],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ycniuqton/Devlens.git"
+  },
+  "homepage": "https://github.com/ycniuqton/Devlens#readme",
   "dependencies": {
     "chokidar": "^3.6.0",
     "commander": "^12.0.0",

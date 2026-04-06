@@ -11,10 +11,14 @@ export interface ClaudeTodo {
   updatedAt: string;
 }
 
-export interface ClaudeTaskFile {
+export interface ClaudeSession {
   sessionId: string;
-  highwatermark: number;
-  lockExists: boolean;
+  name?: string;
+  cwd?: string;
+  pid?: number;
+  startedAt?: string;
+  taskCount: number;
+  active: boolean;
 }
 
 // In-memory store for todos received via hooks
@@ -37,8 +41,6 @@ export function parseTodoWritePayload(toolInput: any): ClaudeTodo[] {
   if (!toolInput) return [];
 
   const result: ClaudeTodo[] = [];
-
-  // TodoWrite sends an array of todos
   const items = toolInput.todos || toolInput.items || (Array.isArray(toolInput) ? toolInput : [toolInput]);
 
   for (const item of items) {
@@ -63,17 +65,20 @@ function mapTodoStatus(status: string | undefined): ClaudeTodo['status'] {
   return 'pending';
 }
 
-// Watch ~/.claude/tasks/ for cross-session task changes
-export function watchClaudeTasks(onChange: (sessions: ClaudeTaskFile[]) => void) {
-  const tasksDir = path.join(os.homedir(), '.claude', 'tasks');
+// Watch ~/.claude/tasks/ and ~/.claude/sessions/ for changes
+export function watchClaudeTasks(onChange: (sessions: ClaudeSession[]) => void) {
+  const claudeDir = path.join(os.homedir(), '.claude');
+  const tasksDir = path.join(claudeDir, 'tasks');
+  const sessionsDir = path.join(claudeDir, 'sessions');
 
-  if (!fs.existsSync(tasksDir)) {
-    return null;
-  }
+  if (!fs.existsSync(tasksDir)) return null;
 
   let debounceTimer: NodeJS.Timeout | null = null;
 
-  const watcher = chokidar.watch(tasksDir, {
+  const watchPaths = [tasksDir];
+  if (fs.existsSync(sessionsDir)) watchPaths.push(sessionsDir);
+
+  const watcher = chokidar.watch(watchPaths, {
     persistent: true,
     ignoreInitial: true,
     depth: 2,
@@ -82,7 +87,7 @@ export function watchClaudeTasks(onChange: (sessions: ClaudeTaskFile[]) => void)
   const debouncedOnChange = () => {
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      const sessions = readClaudeTaskSessions(tasksDir);
+      const sessions = readClaudeSessions();
       onChange(sessions);
     }, 300);
   };
@@ -94,37 +99,81 @@ export function watchClaudeTasks(onChange: (sessions: ClaudeTaskFile[]) => void)
   return watcher;
 }
 
-// Read all session task directories
-export function readClaudeTaskSessions(tasksDir?: string): ClaudeTaskFile[] {
-  const dir = tasksDir || path.join(os.homedir(), '.claude', 'tasks');
+// Read session metadata from ~/.claude/sessions/*.json
+function readSessionMetadata(): Map<string, { name?: string; cwd?: string; pid?: number; startedAt?: number }> {
+  const sessionsDir = path.join(os.homedir(), '.claude', 'sessions');
+  const metadata = new Map<string, any>();
 
-  if (!fs.existsSync(dir)) return [];
-
-  const sessions: ClaudeTaskFile[] = [];
+  if (!fs.existsSync(sessionsDir)) return metadata;
 
   try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const files = fs.readdirSync(sessionsDir).filter(f => f.endsWith('.json'));
+    for (const file of files) {
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(sessionsDir, file), 'utf-8'));
+        if (data.sessionId) {
+          // Keep the latest entry per sessionId (multiple PIDs may share a session)
+          const existing = metadata.get(data.sessionId);
+          if (!existing || (data.startedAt && (!existing.startedAt || data.startedAt > existing.startedAt))) {
+            metadata.set(data.sessionId, {
+              name: data.name,
+              cwd: data.cwd,
+              pid: data.pid,
+              startedAt: data.startedAt,
+            });
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+
+  return metadata;
+}
+
+// Read all Claude sessions with correlated metadata
+export function readClaudeSessions(): ClaudeSession[] {
+  const tasksDir = path.join(os.homedir(), '.claude', 'tasks');
+  if (!fs.existsSync(tasksDir)) return [];
+
+  const sessionMeta = readSessionMetadata();
+  const sessions: ClaudeSession[] = [];
+
+  try {
+    const entries = fs.readdirSync(tasksDir, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
 
-      const sessionDir = path.join(dir, entry.name);
+      const sessionDir = path.join(tasksDir, entry.name);
       const hwFile = path.join(sessionDir, '.highwatermark');
       const lockFile = path.join(sessionDir, '.lock');
 
-      let highwatermark = 0;
+      let taskCount = 0;
       if (fs.existsSync(hwFile)) {
         try {
-          highwatermark = parseInt(fs.readFileSync(hwFile, 'utf-8').trim(), 10) || 0;
+          taskCount = parseInt(fs.readFileSync(hwFile, 'utf-8').trim(), 10) || 0;
         } catch {}
       }
 
+      const meta = sessionMeta.get(entry.name);
+
       sessions.push({
         sessionId: entry.name,
-        highwatermark,
-        lockExists: fs.existsSync(lockFile),
+        name: meta?.name,
+        cwd: meta?.cwd,
+        pid: meta?.pid,
+        startedAt: meta?.startedAt ? new Date(meta.startedAt).toISOString() : undefined,
+        taskCount,
+        active: fs.existsSync(lockFile),
       });
     }
   } catch {}
+
+  // Sort: active first, then by startedAt descending
+  sessions.sort((a, b) => {
+    if (a.active !== b.active) return b.active ? 1 : -1;
+    if (a.startedAt && b.startedAt) return b.startedAt.localeCompare(a.startedAt);
+    return 0;
+  });
 
   return sessions;
 }

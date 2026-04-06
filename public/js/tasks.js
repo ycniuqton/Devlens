@@ -201,19 +201,30 @@ function renderClaudeSessions(sessions) {
 
   if (countEl) countEl.textContent = sessions.length;
 
-  // Sort: active (locked) first
-  sessions.sort((a, b) => (b.lockExists ? 1 : 0) - (a.lockExists ? 1 : 0));
+  container.innerHTML = sessions.map(s => {
+    const name = s.name || 'Unnamed session';
+    const shortId = s.sessionId.substring(0, 8);
+    const project = s.cwd ? s.cwd.split('/').pop() : '';
+    const time = s.startedAt ? formatRelativeTime(s.startedAt) : '';
 
-  container.innerHTML = sessions.map(s => `
+    return `
     <div class="session-card">
-      <span class="${s.lockExists ? 'session-active' : 'session-inactive'}"></span>
-      <span class="session-id">${s.sessionId.substring(0, 8)}...</span>
+      <span class="${s.active ? 'session-active' : 'session-inactive'}"></span>
+      <div class="session-info">
+        <div class="session-name">${escapeHtml(name)}</div>
+        <div class="session-details">
+          <span class="session-id">${shortId}</span>
+          ${project ? `<span class="session-project">${escapeHtml(project)}</span>` : ''}
+          ${time ? `<span class="session-time">${time}</span>` : ''}
+        </div>
+      </div>
       <div class="session-meta">
-        <span>Tasks: ${s.highwatermark}</span>
-        ${s.lockExists ? '<span class="tag" style="color:var(--color-success)">active</span>' : ''}
+        <span class="session-task-count">${s.taskCount} tasks</span>
+        ${s.active ? '<span class="tag session-active-tag">active</span>' : ''}
       </div>
     </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 function handleClaudeTasksUpdate(payload) {
@@ -231,6 +242,19 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function formatRelativeTime(isoString) {
+  const now = Date.now();
+  const then = new Date(isoString).getTime();
+  const diff = now - then;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 // Initial load

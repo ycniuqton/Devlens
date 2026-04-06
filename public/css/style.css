@@ -886,21 +886,68 @@ body {
 
 .session-card:hover { background: var(--color-surface-hover); }
 
-.session-id {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--color-text-secondary);
+.session-info { flex: 1; min-width: 0; }
+
+.session-name {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.session-details {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: 2px;
+}
+
+.session-id {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.session-project {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.session-project::before {
+  content: '/';
+  margin-right: var(--sp-1);
+  color: var(--color-text-muted);
+}
+
+.session-time {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.session-time::before {
+  content: '\00b7';
+  margin-right: var(--sp-1);
+}
+
 .session-meta {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
+  flex-shrink: 0;
+}
+
+.session-task-count {
   font-size: var(--text-xs);
   color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+.session-active-tag {
+  color: var(--color-success) !important;
+  background: var(--color-success-subtle) !important;
+  border-color: transparent !important;
 }
 
 .session-active {
@@ -909,6 +956,7 @@ body {
   border-radius: var(--radius-full);
   background: var(--color-success);
   box-shadow: 0 0 6px var(--color-success-subtle);
+  flex-shrink: 0;
 }
 
 .session-inactive {
@@ -916,6 +964,7 @@ body {
   height: 8px;
   border-radius: var(--radius-full);
   background: var(--color-text-muted);
+  flex-shrink: 0;
 }
 
 /* ============================================================
