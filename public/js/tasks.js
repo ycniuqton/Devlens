@@ -1,9 +1,17 @@
-// Task board + Claude Todos/Sessions
+// Task board
 const modal = document.getElementById('task-modal');
 const taskForm = document.getElementById('task-form');
 let allTasks = [];
+let currentSessionFilter = '';
 
 document.getElementById('add-task-btn').addEventListener('click', () => openModal());
+
+// Session filter dropdown
+const sessionSelect = document.getElementById('session-filter');
+sessionSelect?.addEventListener('change', () => {
+  currentSessionFilter = sessionSelect.value;
+  loadTasks();
+});
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
 });
@@ -53,14 +61,79 @@ function openModal(task = null) {
   document.getElementById('task-status-input').value = task ? task.status : 'pending';
   document.getElementById('task-tags-input').value = task ? task.tags.join(', ') : '';
 
-  // Show context if available
-  const contextGroup = document.getElementById('task-context-group');
-  const contextDisplay = document.getElementById('task-context-display');
+  // Header: task number + status badge
+  const taskNum = document.getElementById('modal-task-number');
+  const statusBadge = document.getElementById('modal-status-badge');
+  if (task?.claudeTaskId) {
+    taskNum.textContent = `#${task.claudeTaskId}`;
+  } else {
+    taskNum.textContent = '';
+  }
+  if (task) {
+    statusBadge.textContent = task.status;
+    statusBadge.className = 'modal-status-badge ' + task.status;
+  } else {
+    statusBadge.textContent = '';
+    statusBadge.className = 'modal-status-badge';
+  }
+
+  // Footer: session hint
+  const sessionHint = document.getElementById('modal-session-hint');
+  sessionHint.textContent = task?.claudeSessionId ? `Session ${task.claudeSessionId.substring(0, 8)}` : '';
+
+  // Parse context (stored as JSON string with userPrompt, claudeReasoning, filesTouched)
+  let ctx = null;
   if (task?.context) {
-    contextDisplay.textContent = task.context;
+    try { ctx = typeof task.context === 'string' ? JSON.parse(task.context) : task.context; } catch { ctx = { userPrompt: task.context }; }
+  }
+
+  // User prompt
+  const contextGroup = document.getElementById('task-context-group');
+  if (ctx?.userPrompt) {
+    document.getElementById('task-context-prompt').textContent = ctx.userPrompt;
     contextGroup.style.display = '';
   } else {
     contextGroup.style.display = 'none';
+  }
+
+  // Claude reasoning
+  const reasoningGroup = document.getElementById('task-reasoning-group');
+  if (ctx?.claudeReasoning) {
+    document.getElementById('task-context-reasoning').textContent = ctx.claudeReasoning;
+    reasoningGroup.style.display = '';
+  } else {
+    reasoningGroup.style.display = 'none';
+  }
+
+  // Files touched
+  const filesGroup = document.getElementById('task-files-group');
+  if (ctx?.filesTouched?.length) {
+    document.getElementById('task-context-files').textContent = ctx.filesTouched.join('\n');
+    filesGroup.style.display = '';
+  } else {
+    filesGroup.style.display = 'none';
+  }
+
+  // Completion context
+  let compCtx = null;
+  if (task?.completionContext) {
+    try { compCtx = typeof task.completionContext === 'string' ? JSON.parse(task.completionContext) : task.completionContext; } catch {}
+  }
+
+  const completionGroup = document.getElementById('task-completion-group');
+  if (compCtx?.claudeReasoning) {
+    document.getElementById('task-completion-display').textContent = compCtx.claudeReasoning;
+    completionGroup.style.display = '';
+  } else {
+    completionGroup.style.display = 'none';
+  }
+
+  const completionFilesGroup = document.getElementById('task-completion-files-group');
+  if (compCtx?.filesTouched?.length) {
+    document.getElementById('task-completion-files').textContent = compCtx.filesTouched.join('\n');
+    completionFilesGroup.style.display = '';
+  } else {
+    completionFilesGroup.style.display = 'none';
   }
 
   // Show Claude metadata if available
@@ -81,6 +154,11 @@ function openModal(task = null) {
     metaGroup.style.display = 'none';
   }
 
+  // Show/hide files row
+  const filesRow = document.getElementById('modal-row-files');
+  const hasFilesRow = ctx?.filesTouched?.length || compCtx?.filesTouched?.length || metaParts.length > 0;
+  if (filesRow) filesRow.style.display = hasFilesRow ? '' : 'none';
+
   modal.classList.remove('hidden');
 }
 
@@ -92,12 +170,41 @@ function closeModal() {
 // ---- Kanban Board ----
 async function loadTasks() {
   try {
-    const res = await fetch('/api/tasks');
+    const params = currentSessionFilter ? `?session=${currentSessionFilter}` : '';
+    const res = await fetch(`/api/tasks${params}`);
     allTasks = await res.json();
     renderBoard();
   } catch (err) {
     showToast('Failed to load tasks', 'error');
   }
+}
+
+async function loadSessions() {
+  try {
+    const res = await fetch('/api/tasks/sessions');
+    const sessions = await res.json();
+    renderSessionDropdown(sessions);
+  } catch {}
+}
+
+function renderSessionDropdown(sessions) {
+  const select = document.getElementById('session-filter');
+  if (!select) return;
+
+  const current = select.value;
+  select.innerHTML = '<option value="">All Sessions</option>';
+
+  for (const s of sessions) {
+    const name = s.name || s.sessionId.substring(0, 8);
+    const dot = s.status === 'active' ? '\u{1F7E2}' : '\u26AA';
+    const opt = document.createElement('option');
+    opt.value = s.sessionId;
+    opt.textContent = `${dot} ${name} (${s.taskCount})`;
+    select.appendChild(opt);
+  }
+
+  // Restore selection
+  if (current) select.value = current;
 }
 
 function renderBoard() {
@@ -179,6 +286,7 @@ async function deleteTask(id) {
 
 // ---- WebSocket handlers ----
 function handleTaskUpdate() {
+  loadSessions();
   loadTasks();
 }
 
@@ -189,4 +297,5 @@ function escapeHtml(str) {
 }
 
 // Initial load
+loadSessions();
 loadTasks();

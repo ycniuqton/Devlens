@@ -1,13 +1,22 @@
 import { Router, Request, Response } from 'express';
 import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { TaskStoreService } from '../services/taskStore';
 import { WsMessage } from '../types';
 
-// Extract the user prompt that triggered the tool call from the transcript
-function extractContext(transcriptPath: string | undefined, toolUseId: string | undefined): string {
-  if (!transcriptPath || !toolUseId) return '';
+interface TaskContext {
+  userPrompt: string;
+  claudeReasoning: string;
+  filesTouched: string[];
+}
+
+// Extract rich context from the conversation transcript
+function extractContext(transcriptPath: string | undefined, toolUseId: string | undefined): TaskContext {
+  const empty: TaskContext = { userPrompt: '', claudeReasoning: '', filesTouched: [] };
+  if (!transcriptPath || !toolUseId) return empty;
   try {
-    if (!fs.existsSync(transcriptPath)) return '';
+    if (!fs.existsSync(transcriptPath)) return empty;
     const lines = fs.readFileSync(transcriptPath, 'utf-8').split('\n').filter(Boolean);
 
     // Find the line with this tool_use_id
@@ -18,32 +27,66 @@ function extractContext(transcriptPath: string | undefined, toolUseId: string | 
         break;
       }
     }
-    if (toolLineIdx === -1) return '';
+    if (toolLineIdx === -1) return empty;
 
-    // Search backwards for the last user message with actual text
+    let userPrompt = '';
+    let claudeReasoning = '';
+    const filesTouched: string[] = [];
+
     for (let j = toolLineIdx - 1; j >= Math.max(0, toolLineIdx - 50); j--) {
       try {
         const entry = JSON.parse(lines[j]);
-        if (entry.type !== 'user') continue;
         const content = entry.message?.content;
-        let text = '';
-        if (typeof content === 'string') {
-          text = content;
-        } else if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block?.type === 'text' && block.text) {
-              text += block.text;
+
+        // Claude's reasoning — assistant text before the tool call
+        if (entry.type === 'assistant' && !claudeReasoning) {
+          if (typeof content === 'string' && content.trim().length > 10) {
+            claudeReasoning = content.trim().substring(0, 500);
+          } else if (Array.isArray(content)) {
+            for (const block of content) {
+              if (block?.type === 'text' && block.text?.trim().length > 10) {
+                claudeReasoning = block.text.trim().substring(0, 500);
+                break;
+              }
             }
           }
         }
-        if (text.trim().length > 5) {
-          return text.trim().substring(0, 500);
+
+        // User prompt
+        if (entry.type === 'user' && !userPrompt) {
+          let text = '';
+          if (typeof content === 'string') text = content;
+          else if (Array.isArray(content)) {
+            for (const block of content) {
+              if (block?.type === 'text' && block.text) text += block.text;
+            }
+          }
+          if (text.trim().length > 5) {
+            userPrompt = text.trim().substring(0, 500);
+          }
         }
+
+        // Files touched (Read/Edit/Write tool calls)
+        if (entry.type === 'assistant' && Array.isArray(content)) {
+          for (const block of content) {
+            if (block?.type === 'tool_use' && ['Read', 'Edit', 'Write', 'Glob'].includes(block.name)) {
+              const fp = block.input?.file_path || block.input?.pattern || '';
+              if (fp && !filesTouched.includes(fp)) {
+                filesTouched.push(fp);
+              }
+            }
+          }
+        }
+
+        if (userPrompt && claudeReasoning) break;
       } catch {}
     }
+
+    return { userPrompt, claudeReasoning, filesTouched: filesTouched.slice(0, 10) };
   } catch {}
-  return '';
+  return empty;
 }
+
 export const tasksRouter = Router();
 
 // Sync endpoint — receives Claude Code hook payloads (PostToolUse on TaskCreate/TaskUpdate)
@@ -59,6 +102,44 @@ tasksRouter.post('/sync', async (req: Request, res: Response) => {
     }
 
     const sessionShort = session_id ? String(session_id).substring(0, 8) : '';
+
+    // Upsert session from hook payload + session metadata
+    if (session_id) {
+      const meta = readSessionMeta(session_id);
+      store.upsertSession({
+        sessionId: session_id,
+        name: meta?.name,
+        cwd: meta?.cwd,
+        pid: meta?.pid,
+        startedAt: meta?.startedAt ? new Date(meta.startedAt).toISOString() : undefined,
+        status: 'active',
+      });
+    }
+
+    // Detect WAITING_APPROVAL — Claude is asking for commit approval
+    {
+      const projectDir: string = req.app.locals.projectDir;
+      const candidates: string[] = [];
+      const collect = (v: any) => { if (typeof v === 'string') candidates.push(v); };
+      collect(tool_input?.subject);
+      collect(tool_input?.title);
+      collect(tool_input?.content);
+      if (Array.isArray(tool_input?.todos)) {
+        for (const t of tool_input.todos) collect(t?.content);
+      }
+      const approvalLine = candidates.find(c => c.includes('WAITING_APPROVAL:'));
+      if (approvalLine) {
+        const message = approvalLine.split('WAITING_APPROVAL:')[1].trim();
+        const pendingFile = path.join(projectDir, '.devlens', 'commit-pending.md');
+        const dir = path.dirname(pendingFile);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(pendingFile, message);
+        // Remove any prior approval so a new commit cycle starts clean
+        const approvedFile = path.join(projectDir, '.devlens', 'commit-approved.md');
+        if (fs.existsSync(approvedFile)) fs.unlinkSync(approvedFile);
+        if (broadcast) broadcast({ type: 'commit-approval-update', payload: { pending: message, approved: false } } as any);
+      }
+    }
 
     // Extract Claude task ID
     let claudeTaskId: string | null = null;
@@ -103,7 +184,9 @@ tasksRouter.post('/sync', async (req: Request, res: Response) => {
         if (tool_input?.activeForm) extra.activeForm = tool_input.activeForm;
         if (tool_input?.owner) extra.owner = tool_input.owner;
         if (tool_input?.metadata) extra.metadata = tool_input.metadata;
-        if (context) extra.context = context;
+        if (context.userPrompt || context.claudeReasoning || context.filesTouched.length) {
+          extra.context = JSON.stringify(context);
+        }
         await store.updateTask(task.id, extra as any);
       }
 
@@ -146,6 +229,14 @@ tasksRouter.post('/sync', async (req: Request, res: Response) => {
         if (tool_input?.owner) updates.owner = tool_input.owner;
         if (tool_input?.metadata) updates.metadata = { ...(found as any).metadata, ...tool_input.metadata };
 
+        // On completion/archive — capture what Claude did to finish
+        if (status === 'completed' || status === 'deleted') {
+          const completionCtx = extractContext(transcript_path, tool_use_id);
+          if (completionCtx.claudeReasoning || completionCtx.filesTouched.length) {
+            updates.completionContext = JSON.stringify(completionCtx);
+          }
+        }
+
         const updated = await store.updateTask(found.id, updates as any);
         if (broadcast) broadcast({ type: 'task-update', payload: { action: 'updated', task: updated } });
       }
@@ -162,11 +253,23 @@ tasksRouter.get('/', async (req: Request, res: Response) => {
   const store: TaskStoreService = req.app.locals.taskStore;
   try {
     const status = req.query.status as string | undefined;
-    const tasks = await store.getTasks(status ? { status } : undefined);
+    const sessionId = req.query.session as string | undefined;
+    const filter: any = {};
+    if (status) filter.status = status;
+    if (sessionId) filter.sessionId = sessionId;
+    const tasks = await store.getTasks(Object.keys(filter).length ? filter : undefined);
     res.json(tasks);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// GET /api/tasks/sessions — must be before /:id
+tasksRouter.get('/sessions', (req: Request, res: Response) => {
+  const store: TaskStoreService = req.app.locals.taskStore;
+  const projectDir: string = req.app.locals.projectDir;
+  const sessions = store.getSessions().filter(s => !s.cwd || s.cwd === projectDir);
+  res.json(sessions);
 });
 
 tasksRouter.get('/:id', async (req: Request, res: Response) => {
@@ -215,3 +318,47 @@ tasksRouter.delete('/:id', async (req: Request, res: Response) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ---- Sessions ----
+
+// Read session metadata from ~/.claude/sessions/*.json
+function readSessionMeta(sessionId: string): { name?: string; cwd?: string; pid?: number; startedAt?: number } | null {
+  const sessionsDir = path.join(os.homedir(), '.claude', 'sessions');
+  if (!fs.existsSync(sessionsDir)) return null;
+
+  try {
+    const files = fs.readdirSync(sessionsDir).filter(f => f.endsWith('.json'));
+    let best: any = null;
+    for (const file of files) {
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(sessionsDir, file), 'utf-8'));
+        if (data.sessionId === sessionId) {
+          if (!best || (data.startedAt && (!best.startedAt || data.startedAt > best.startedAt))) {
+            best = data;
+          }
+        }
+      } catch {}
+    }
+    return best;
+  } catch {}
+  return null;
+}
+
+
+// Check session liveness by watching lock files
+function checkSessionLiveness(store: TaskStoreService) {
+  const tasksDir = path.join(os.homedir(), '.claude', 'tasks');
+  if (!fs.existsSync(tasksDir)) return;
+
+  const sessions = store.getSessions();
+  for (const session of sessions) {
+    if (session.status !== 'active') continue;
+    const lockFile = path.join(tasksDir, session.sessionId, '.lock');
+    if (!fs.existsSync(lockFile)) {
+      store.updateSessionStatus(session.sessionId, 'ended');
+    }
+  }
+}
+
+// Export for use in server.ts
+export { checkSessionLiveness };

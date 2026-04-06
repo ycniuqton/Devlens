@@ -1,9 +1,9 @@
 // Diff viewer
-let currentFilter = 'all';
-let currentViewMode = 'line-by-line';
-let fileListMode = localStorage.getItem('devlens-file-view') || 'flat';
-let diffFiles = [];
-let currentFiles = [];
+var currentFilter = 'all';
+var currentViewMode = 'line-by-line';
+var fileListMode = localStorage.getItem('devlens-file-view') || 'flat';
+var diffFiles = [];
+var currentFiles = [];
 
 // Restore file list view mode from localStorage
 (function restoreFileViewMode() {
@@ -41,7 +41,14 @@ document.querySelector('.header-actions')?.addEventListener('click', (e) => {
 // File list click → collapse all, expand clicked, scroll to it
 document.getElementById('file-list-items').addEventListener('click', (e) => {
   const li = e.target.closest('li');
-  if (!li || li.classList.contains('empty-state-inline') || li.classList.contains('tree-folder')) return;
+  if (!li || li.classList.contains('empty-state-inline')) return;
+
+  // Folder click → toggle expand/collapse
+  if (li.classList.contains('tree-folder')) {
+    const folderPath = li.dataset.folder;
+    if (folderPath) toggleFolder(folderPath);
+    return;
+  }
 
   const fileName = li.getAttribute('title');
   if (!fileName) return;
@@ -70,6 +77,33 @@ document.getElementById('file-list-items').addEventListener('click', (e) => {
   }, 50);
 });
 
+// Expand all / Collapse all folders (tree view only)
+function getAllFolderPaths(files) {
+  const folderSet = new Set();
+  for (const f of files) {
+    const parts = f.path.split('/');
+    let current = '';
+    for (let i = 0; i < parts.length - 1; i++) {
+      current = current ? `${current}/${parts[i]}` : parts[i];
+      folderSet.add(current);
+    }
+  }
+  return Array.from(folderSet);
+}
+
+document.getElementById('expand-all-btn')?.addEventListener('click', () => {
+  collapsedFolders.clear();
+  saveCollapsedFolders();
+  renderFileList(currentFiles);
+});
+
+document.getElementById('collapse-all-btn')?.addEventListener('click', () => {
+  const allFolders = getAllFolderPaths(currentFiles);
+  collapsedFolders = new Set(allFolders);
+  saveCollapsedFolders();
+  renderFileList(currentFiles);
+});
+
 // Word wrap toggle
 document.getElementById('toggle-wrap')?.addEventListener('click', (e) => {
   const btn = e.currentTarget;
@@ -78,11 +112,22 @@ document.getElementById('toggle-wrap')?.addEventListener('click', (e) => {
 });
 
 // File list view mode toggles — persist to localStorage
+function updateExpandButtonsVisibility() {
+  const visible = fileListMode === 'tree';
+  const expandBtn = document.getElementById('expand-all-btn');
+  const collapseBtn = document.getElementById('collapse-all-btn');
+  const divider = document.querySelector('.file-list-divider');
+  if (expandBtn) expandBtn.style.display = visible ? '' : 'none';
+  if (collapseBtn) collapseBtn.style.display = visible ? '' : 'none';
+  if (divider) divider.style.display = visible ? '' : 'none';
+}
+
 document.getElementById('file-view-flat')?.addEventListener('click', () => {
   fileListMode = 'flat';
   localStorage.setItem('devlens-file-view', 'flat');
   document.getElementById('file-view-flat').classList.add('active');
   document.getElementById('file-view-tree').classList.remove('active');
+  updateExpandButtonsVisibility();
   renderFileList(currentFiles);
 });
 document.getElementById('file-view-tree')?.addEventListener('click', () => {
@@ -90,8 +135,12 @@ document.getElementById('file-view-tree')?.addEventListener('click', () => {
   localStorage.setItem('devlens-file-view', 'tree');
   document.getElementById('file-view-tree').classList.add('active');
   document.getElementById('file-view-flat').classList.remove('active');
+  updateExpandButtonsVisibility();
   renderFileList(currentFiles);
 });
+
+// Initial visibility
+updateExpandButtonsVisibility();
 
 async function loadDiff() {
   try {
@@ -183,6 +232,8 @@ function toggleFileSection(headerEl) {
   section.classList.toggle('expanded');
 }
 
+var STATUS_LABELS = { modified: 'M', added: 'A', deleted: 'D', untracked: 'U', renamed: 'R' };
+
 function renderFileList(files) {
   const list = document.getElementById('file-list-items');
   const countEl = document.getElementById('file-count');
@@ -199,13 +250,31 @@ function renderFileList(files) {
     list.innerHTML = renderTreeView(files);
   } else {
     list.innerHTML = files.map(f => `
-      <li title="${f.path}" role="button" tabindex="0">
+      <li title="${f.path}" role="button" tabindex="0" class="file-status-${f.status}">
         <span class="status-badge ${f.status}"></span>
         <span class="file-name">${f.path.split('/').pop()}</span>
-        ${f.staged ? '<span class="tag">staged</span>' : ''}
+        <span class="status-label-tag ${f.status}">${STATUS_LABELS[f.status] || '?'}</span>
+        ${f.staged ? '<span class="tag">S</span>' : ''}
       </li>
     `).join('');
   }
+}
+
+// Track collapsed folder state across renders
+var collapsedFolders = new Set(JSON.parse(localStorage.getItem('devlens-collapsed-folders') || '[]'));
+
+function saveCollapsedFolders() {
+  localStorage.setItem('devlens-collapsed-folders', JSON.stringify(Array.from(collapsedFolders)));
+}
+
+function toggleFolder(folderPath) {
+  if (collapsedFolders.has(folderPath)) {
+    collapsedFolders.delete(folderPath);
+  } else {
+    collapsedFolders.add(folderPath);
+  }
+  saveCollapsedFolders();
+  renderFileList(currentFiles);
 }
 
 function renderTreeView(files) {
@@ -220,34 +289,42 @@ function renderTreeView(files) {
     node[parts[parts.length - 1]] = f;
   }
 
-  function renderNode(obj, depth) {
+  function renderNode(obj, depth, parentPath) {
     let html = '';
     const folders = Object.keys(obj).filter(k => typeof obj[k] === 'object' && !obj[k].path);
     const fileKeys = Object.keys(obj).filter(k => typeof obj[k] === 'object' && obj[k].path);
 
     for (const folder of folders.sort()) {
-      html += `<li class="tree-folder" style="padding-left:${depth * 16}px">
+      const folderPath = parentPath ? `${parentPath}/${folder}` : folder;
+      const isCollapsed = collapsedFolders.has(folderPath);
+      html += `<li class="tree-folder" data-folder="${folderPath}" style="padding-left:${depth * 16}px">
+        <svg class="tree-chevron ${isCollapsed ? '' : 'expanded'}" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--color-text-muted)">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
         </svg>
         <span class="folder-name">${folder}</span>
       </li>`;
-      html += renderNode(obj[folder], depth + 1);
+      if (!isCollapsed) {
+        html += renderNode(obj[folder], depth + 1, folderPath);
+      }
     }
 
     for (const key of fileKeys.sort()) {
       const f = obj[key];
-      html += `<li title="${f.path}" role="button" tabindex="0" style="padding-left:${depth * 16 + 8}px">
+      html += `<li title="${f.path}" role="button" tabindex="0" style="padding-left:${depth * 16 + 8}px" class="file-status-${f.status}">
         <span class="status-badge ${f.status}"></span>
         <span class="file-name">${key}</span>
-        ${f.staged ? '<span class="tag">staged</span>' : ''}
+        <span class="status-label-tag ${f.status}">${STATUS_LABELS[f.status] || '?'}</span>
+        ${f.staged ? '<span class="tag">S</span>' : ''}
       </li>`;
     }
 
     return html;
   }
 
-  return renderNode(tree, 0);
+  return renderNode(tree, 0, '');
 }
 
 function handleDiffUpdate(payload) {

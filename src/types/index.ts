@@ -36,7 +36,8 @@ export interface Task {
   activeForm?: string;
   owner?: string;
   metadata?: Record<string, any>;
-  context?: string; // user prompt that triggered this task
+  context?: string; // context when task was created (JSON)
+  completionContext?: string; // context when task was completed (JSON)
 }
 
 export interface CreateTaskInput {
@@ -91,6 +92,6 @@ export interface DevlensConfig {
 }
 
 export interface WsMessage {
-  type: 'file-changed' | 'diff-update' | 'status-update' | 'task-update' | 'todo-update' | 'claude-tasks-update';
+  type: 'file-changed' | 'diff-update' | 'status-update' | 'task-update' | 'todo-update' | 'claude-tasks-update' | 'rules-update' | 'commit-approval-update';
   payload: unknown;
 }

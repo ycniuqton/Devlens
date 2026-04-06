@@ -184,6 +184,33 @@ Otherwise, parse the JSON and display a clean summary:
   fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
   console.log(`  Created skill: .claude/skills/devlens (use /devlens in Claude)`);
 
+  // 6. Append the Devlens block to CLAUDE.md (idempotent)
+  const claudeMdPath = path.join(resolvedDir, 'CLAUDE.md');
+  const devlensBlock = '## Devlens\nRead and follow all rules in `.devlens/rules.md` before every action.\n';
+  let existing = '';
+  if (fs.existsSync(claudeMdPath)) {
+    existing = fs.readFileSync(claudeMdPath, 'utf-8');
+  }
+  if (!existing.includes('## Devlens')) {
+    const sep = existing && !existing.endsWith('\n') ? '\n\n' : (existing ? '\n' : '');
+    fs.writeFileSync(claudeMdPath, existing + sep + devlensBlock);
+    console.log(`  Updated CLAUDE.md with Devlens rules reference`);
+  }
+
+  // 7. Create .devlens/rules.md with default rule
+  const devlensProjectDir = path.join(resolvedDir, '.devlens');
+  if (!fs.existsSync(devlensProjectDir)) {
+    fs.mkdirSync(devlensProjectDir, { recursive: true });
+  }
+  const rulesPath = path.join(devlensProjectDir, 'rules.md');
+  if (!fs.existsSync(rulesPath)) {
+    const defaultRules = `# Devlens Rules
+- Do not run git commit or git push under any circumstances. Only proceed after receiving an explicit user instruction, and clearly indicate before performing the commit.
+`;
+    fs.writeFileSync(rulesPath, defaultRules);
+    console.log(`  Created .devlens/rules.md with default rules`);
+  }
+
   // Get network IPs for display
   const os = require('os');
   const interfaces = os.networkInterfaces();

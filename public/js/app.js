@@ -28,7 +28,7 @@ window.addEventListener('popstate', () => {
 // Load initial tab from URL — redirect / to /diff
 (function() {
   const path = location.pathname.replace('/', '');
-  const tab = ['diff', 'tasks', 'integrations'].includes(path) ? path : 'diff';
+  const tab = ['diff', 'tasks', 'rules', 'integrations'].includes(path) ? path : 'diff';
   if (!path || path === '') {
     history.replaceState(null, '', '/diff');
   }
@@ -74,6 +74,12 @@ function connectWebSocket() {
       }
       if (msg.type === 'task-update' && typeof handleTaskUpdate === 'function') {
         handleTaskUpdate(msg.payload);
+      }
+      if (msg.type === 'rules-update' && typeof handleRulesUpdate === 'function') {
+        handleRulesUpdate(msg.payload);
+      }
+      if (msg.type === 'commit-approval-update' && typeof handleCommitApprovalUpdate === 'function') {
+        handleCommitApprovalUpdate(msg.payload);
       }
     } catch (e) {
       console.error('WebSocket message parse error:', e);

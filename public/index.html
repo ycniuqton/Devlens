@@ -36,6 +36,12 @@
         </svg>
         <span>Tasks</span>
       </button>
+      <button class="nav-item" data-tab="rules" aria-label="View rules">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/>
+        </svg>
+        <span>Rules</span>
+      </button>
       <button class="nav-item" data-tab="integrations" aria-label="View integrations">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
@@ -90,6 +96,13 @@
           <div class="file-list-header">
             <h3>Files</h3>
             <div class="file-list-actions">
+              <button class="btn-icon btn-icon-sm" id="expand-all-btn" title="Expand all files" aria-label="Expand all">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <button class="btn-icon btn-icon-sm" id="collapse-all-btn" title="Collapse all files" aria-label="Collapse all">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+              </button>
+              <div class="file-list-divider"></div>
               <button class="btn-icon btn-icon-sm" id="file-view-tree" title="Folder view" aria-label="Folder view">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
               </button>
@@ -119,10 +132,17 @@
     <section id="tasks-view" class="tab-content">
       <header class="view-header">
         <h1>Task Board</h1>
-        <button class="btn btn-primary" id="add-task-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New Task
-        </button>
+        <div class="header-actions">
+          <div class="session-filter">
+            <select id="session-filter" class="session-select">
+              <option value="">All Sessions</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" id="add-task-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Task
+          </button>
+        </div>
       </header>
       <div id="kanban-board" class="kanban-board">
         <div class="kanban-column" data-status="pending">
@@ -167,6 +187,53 @@
         </div>
       </div>
 
+    </section>
+
+    <!-- Rules View -->
+    <section id="rules-view" class="tab-content">
+      <header class="view-header">
+        <h1>Rules</h1>
+        <div class="header-actions">
+          <button class="btn btn-primary" id="add-rule-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Rule
+          </button>
+        </div>
+      </header>
+
+      <!-- Commit Approval Banner -->
+      <div id="commit-approval-banner" class="commit-approval-banner" style="display:none">
+        <div class="commit-approval-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="commit-approval-body">
+          <div class="commit-approval-title">Claude is waiting for commit approval</div>
+          <div class="commit-approval-message" id="commit-approval-message"></div>
+        </div>
+        <div class="commit-approval-actions">
+          <button class="btn btn-ghost" id="reject-commit-btn">Reject</button>
+          <button class="btn btn-primary" id="approve-commit-btn">Approve Commit</button>
+        </div>
+      </div>
+
+      <!-- Approved confirmation -->
+      <div id="commit-approved-banner" class="commit-approved-banner" style="display:none">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <span>Commit approved at <span id="commit-approved-time"></span></span>
+      </div>
+
+      <div class="rules-container">
+        <div class="preset-rules">
+          <div class="preset-label">Quick add:</div>
+          <button class="btn btn-ghost btn-sm preset-btn" data-preset="Pause after every 3 file changes">+ Pause after every 3 file changes</button>
+          <button class="btn btn-ghost btn-sm preset-btn" data-preset="Always write tests before implementation">+ Tests first</button>
+          <button class="btn btn-ghost btn-sm preset-btn" data-preset="No direct edits to production files">+ No prod edits</button>
+        </div>
+
+        <div id="rules-list" class="rules-list">
+          <p class="panel-empty">Loading rules...</p>
+        </div>
+      </div>
     </section>
 
     <!-- Integrations View -->
@@ -227,57 +294,90 @@
   <div id="task-modal" class="modal hidden">
     <div class="modal-backdrop"></div>
     <div class="modal-content">
+      <!-- Header: title | task# + status badge | close -->
       <div class="modal-header">
         <h3 id="modal-title">New Task</h3>
+        <div class="modal-header-center">
+          <span id="modal-task-number" class="modal-task-num"></span>
+          <span id="modal-status-badge" class="modal-status-badge"></span>
+        </div>
         <button type="button" class="btn btn-icon" id="modal-close" aria-label="Close modal">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
+
       <form id="task-form">
         <input type="hidden" id="task-id">
-        <div class="form-group">
-          <label for="task-title-input">Title</label>
-          <input type="text" id="task-title-input" placeholder="What needs to be done?" required>
-        </div>
-        <div class="form-group">
-          <label for="task-desc-input">Description</label>
-          <textarea id="task-desc-input" rows="3" placeholder="Add more details..."></textarea>
-        </div>
-        <div class="form-row">
+        <div class="modal-body">
+          <!-- Row 1: Title (full width) -->
           <div class="form-group">
-            <label for="task-priority-input">Priority</label>
-            <select id="task-priority-input">
-              <option value="low">Low</option>
-              <option value="medium" selected>Medium</option>
-              <option value="high">High</option>
-            </select>
+            <input type="text" id="task-title-input" placeholder="Task title..." required class="input-title">
           </div>
-          <div class="form-group">
-            <label for="task-status-input">Status</label>
-            <select id="task-status-input">
-              <option value="pending">Pending</option>
-              <option value="in-progress">In Progress</option>
-              <option value="completed">Completed</option>
-              <option value="archived">Archived</option>
-            </select>
+
+          <!-- Row 2: Priority | Status | Tags -->
+          <div class="modal-row-3col">
+            <div class="form-group">
+              <label for="task-priority-input">Priority</label>
+              <select id="task-priority-input">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="task-status-input">Status</label>
+              <select id="task-status-input">
+                <option value="pending">Pending</option>
+                <option value="in-progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:2">
+              <label for="task-tags-input">Tags</label>
+              <input type="text" id="task-tags-input" placeholder="bug, frontend, urgent">
+            </div>
+          </div>
+
+          <!-- Row 3: Description | Claude's Reasoning -->
+          <div class="modal-row-2col">
+            <div class="form-group">
+              <label for="task-desc-input">Description</label>
+              <textarea id="task-desc-input" rows="6" placeholder="Add details..."></textarea>
+            </div>
+            <div class="form-group" id="task-reasoning-group" style="display:none">
+              <label>Claude's Reasoning</label>
+              <div id="task-context-reasoning" class="context-display tall"></div>
+            </div>
+          </div>
+
+          <!-- Row 4: Files | Metadata -->
+          <div class="modal-row-2col" id="modal-row-files" style="display:none">
+            <div class="form-group" id="task-files-group" style="display:none">
+              <label>Files</label>
+              <div id="task-context-files" class="context-display mono"></div>
+            </div>
+            <div class="form-group" id="task-claude-meta-group" style="display:none">
+              <label>Metadata</label>
+              <div id="task-claude-meta" class="context-display mono"></div>
+            </div>
+          </div>
+
+          <!-- Hidden context fields for data storage -->
+          <div style="display:none">
+            <div id="task-context-group"><div id="task-context-prompt"></div></div>
+            <div id="task-completion-group"><div id="task-completion-display"></div></div>
+            <div id="task-completion-files-group"><div id="task-completion-files"></div></div>
           </div>
         </div>
-        <div class="form-group">
-          <label for="task-tags-input">Tags</label>
-          <input type="text" id="task-tags-input" placeholder="bug, frontend, urgent">
-        </div>
-        <!-- Claude Code context (read-only, shown when available) -->
-        <div class="form-group" id="task-context-group" style="display:none">
-          <label>Context <span style="color:var(--color-text-muted);font-weight:400">(user prompt that triggered this task)</span></label>
-          <div id="task-context-display" class="context-display"></div>
-        </div>
-        <div class="form-group" id="task-claude-meta-group" style="display:none">
-          <label>Claude Metadata</label>
-          <div id="task-claude-meta" class="context-display" style="font-family:var(--font-mono);font-size:var(--text-xs)"></div>
-        </div>
+
+        <!-- Footer: session hint | buttons -->
         <div class="modal-actions">
-          <button type="button" class="btn btn-ghost" id="modal-cancel">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save Task</button>
+          <span id="modal-session-hint" class="modal-session-hint"></span>
+          <div class="modal-actions-right">
+            <button type="button" class="btn btn-ghost" id="modal-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Task</button>
+          </div>
         </div>
       </form>
     </div>
@@ -289,6 +389,7 @@
   <script src="/js/app.js"></script>
   <script src="/js/diff.js"></script>
   <script src="/js/tasks.js"></script>
+  <script src="/js/rules.js"></script>
   <script src="/js/integrations.js"></script>
 </body>
 </html>

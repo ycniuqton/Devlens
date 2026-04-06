@@ -6,12 +6,26 @@ import { Task, CreateTaskInput, UpdateTaskInput } from '../types';
 
 const ARCHIVE_AFTER_MS = 60 * 60 * 1000; // 1 hour
 
+export interface SessionInfo {
+  sessionId: string;
+  name?: string;
+  cwd?: string;
+  pid?: number;
+  startedAt?: string;
+  lastSeenAt: string;
+  status: 'active' | 'ended';
+  taskCount: number;
+}
+
 export interface TaskStoreService {
-  getTasks(filter?: { status?: string }): Promise<Task[]>;
+  getTasks(filter?: { status?: string; sessionId?: string }): Promise<Task[]>;
   getTask(id: string): Promise<Task | null>;
   createTask(input: CreateTaskInput): Promise<Task>;
   updateTask(id: string, input: UpdateTaskInput & Record<string, any>): Promise<Task>;
   deleteTask(id: string): Promise<void>;
+  upsertSession(info: Partial<SessionInfo> & { sessionId: string }): void;
+  getSessions(): SessionInfo[];
+  updateSessionStatus(sessionId: string, status: 'active' | 'ended'): void;
 }
 
 export function createTaskStore(projectDir: string): TaskStoreService {
@@ -45,11 +59,29 @@ export function createTaskStore(projectDir: string): TaskStoreService {
       active_form TEXT,
       owner TEXT,
       metadata TEXT,
-      context TEXT
+      context TEXT,
+      completion_context TEXT
     )
   `);
 
-  // Prepared statements
+  // Migration: add column if missing (for existing DBs)
+  try { db.exec('ALTER TABLE tasks ADD COLUMN completion_context TEXT'); } catch {}
+
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      session_id TEXT PRIMARY KEY,
+      name TEXT,
+      cwd TEXT,
+      pid INTEGER,
+      started_at TEXT,
+      last_seen_at TEXT,
+      status TEXT DEFAULT 'active',
+      task_count INTEGER DEFAULT 0
+    )
+  `);
+
+  // Prepared statements — tasks
   const insertStmt = db.prepare(`
     INSERT INTO tasks (id, title, description, status, priority, tags, dependencies, created_at, updated_at, source)
     VALUES (@id, @title, @description, @status, @priority, @tags, @dependencies, @created_at, @updated_at, @source)
@@ -57,8 +89,26 @@ export function createTaskStore(projectDir: string): TaskStoreService {
 
   const selectAllStmt = db.prepare('SELECT * FROM tasks ORDER BY created_at DESC');
   const selectByStatusStmt = db.prepare('SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC');
+  const selectBySessionStmt = db.prepare('SELECT * FROM tasks WHERE claude_session_id = ? ORDER BY created_at DESC');
+  const selectByStatusAndSessionStmt = db.prepare('SELECT * FROM tasks WHERE status = ? AND claude_session_id = ? ORDER BY created_at DESC');
   const selectByIdStmt = db.prepare('SELECT * FROM tasks WHERE id = ?');
   const deleteStmt = db.prepare('DELETE FROM tasks WHERE id = ?');
+
+  // Prepared statements — sessions
+  const upsertSessionStmt = db.prepare(`
+    INSERT INTO sessions (session_id, name, cwd, pid, started_at, last_seen_at, status, task_count)
+    VALUES (@session_id, @name, @cwd, @pid, @started_at, @last_seen_at, @status, @task_count)
+    ON CONFLICT(session_id) DO UPDATE SET
+      name = COALESCE(@name, sessions.name),
+      cwd = COALESCE(@cwd, sessions.cwd),
+      pid = COALESCE(@pid, sessions.pid),
+      started_at = COALESCE(@started_at, sessions.started_at),
+      last_seen_at = @last_seen_at,
+      status = @status,
+      task_count = (SELECT COUNT(*) FROM tasks WHERE claude_session_id = @session_id)
+  `);
+  const selectAllSessionsStmt = db.prepare('SELECT * FROM sessions ORDER BY last_seen_at DESC');
+  const updateSessionStatusStmt = db.prepare('UPDATE sessions SET status = ?, last_seen_at = ? WHERE session_id = ?');
 
   // Auto-archive completed tasks older than 1 hour
   const archiveStmt = db.prepare(`
@@ -86,6 +136,7 @@ export function createTaskStore(projectDir: string): TaskStoreService {
       owner: row.owner || undefined,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
       context: row.context || undefined,
+      completionContext: row.completion_context || undefined,
     };
   }
 
@@ -96,7 +147,11 @@ export function createTaskStore(projectDir: string): TaskStoreService {
       archiveStmt.run(now, now, ARCHIVE_AFTER_MS);
 
       let rows;
-      if (filter?.status) {
+      if (filter?.status && filter?.sessionId) {
+        rows = selectByStatusAndSessionStmt.all(filter.status, filter.sessionId);
+      } else if (filter?.sessionId) {
+        rows = selectBySessionStmt.all(filter.sessionId);
+      } else if (filter?.status) {
         rows = selectByStatusStmt.all(filter.status);
       } else {
         rows = selectAllStmt.all();
@@ -158,6 +213,7 @@ export function createTaskStore(projectDir: string): TaskStoreService {
       if ((input as any).owner !== undefined) { updates.push('owner = @owner'); values.owner = (input as any).owner; }
       if ((input as any).metadata !== undefined) { updates.push('metadata = @metadata'); values.metadata = JSON.stringify((input as any).metadata); }
       if ((input as any).context !== undefined) { updates.push('context = @context'); values.context = (input as any).context; }
+      if ((input as any).completionContext !== undefined) { updates.push('completion_context = @completion_context'); values.completion_context = (input as any).completionContext; }
 
       updates.push('updated_at = @updated_at');
       values.updated_at = new Date().toISOString();
@@ -171,6 +227,38 @@ export function createTaskStore(projectDir: string): TaskStoreService {
 
     async deleteTask(id) {
       deleteStmt.run(id);
+    },
+
+    upsertSession(info) {
+      const now = new Date().toISOString();
+      upsertSessionStmt.run({
+        session_id: info.sessionId,
+        name: info.name || null,
+        cwd: info.cwd || null,
+        pid: info.pid || null,
+        started_at: info.startedAt || null,
+        last_seen_at: now,
+        status: info.status || 'active',
+        task_count: 0,
+      });
+    },
+
+    getSessions() {
+      const rows = selectAllSessionsStmt.all() as any[];
+      return rows.map(r => ({
+        sessionId: r.session_id,
+        name: r.name || undefined,
+        cwd: r.cwd || undefined,
+        pid: r.pid || undefined,
+        startedAt: r.started_at || undefined,
+        lastSeenAt: r.last_seen_at,
+        status: r.status as 'active' | 'ended',
+        taskCount: r.task_count,
+      }));
+    },
+
+    updateSessionStatus(sessionId, status) {
+      updateSessionStatusStmt.run(status, new Date().toISOString(), sessionId);
     },
   };
 }
