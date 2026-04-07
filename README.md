@@ -21,15 +21,24 @@ Devlens gives you a web-based UI to monitor file changes, manage Claude Code tas
 
 ## Installation
 
-### Global install (recommended)
+### One-liner (install + init in current project)
+
+```bash
+npm install @ycniuqton/devlens@latest && npx devlens init
+```
+
+Run this in any project directory — installs the latest version locally and sets up Devlens hooks for that project. Re-run anytime to upgrade.
+
+### Global install
 
 ```bash
 npm install -g @ycniuqton/devlens
+devlens init
 ```
 
 ### Without installing — use `npx`
 
-> **Note:** the package is scoped, so you must use the `--package` form. Plain `npx devlens` will install an unrelated package with the same name.
+> **Note:** the package is scoped. Plain `npx devlens` will install an unrelated package with the same name. Use the `--package` form:
 
 ```bash
 npx --package=@ycniuqton/devlens -- devlens init
