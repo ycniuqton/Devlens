@@ -39,6 +39,18 @@
         </svg>
         <span>Tasks</span>
       </button>
+      <button class="nav-item" data-tab="browser" aria-label="File explorer">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span>Files</span>
+      </button>
+      <button class="nav-item" data-tab="history" aria-label="Git history">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span>History</span>
+      </button>
       <button class="nav-item" data-tab="rules" aria-label="View rules">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/>
@@ -190,6 +202,81 @@
         </div>
       </div>
 
+    </section>
+
+    <!-- Files View — VSCode-style file explorer -->
+    <section id="browser-view" class="tab-content">
+      <header class="view-header">
+        <h1>Files</h1>
+        <div class="header-actions">
+          <span class="file-breadcrumb" id="file-breadcrumb">No file selected</span>
+          <button class="btn btn-ghost btn-sm" id="browser-refresh-btn" title="Refresh tree">Refresh</button>
+        </div>
+      </header>
+
+      <div class="explorer-container">
+        <!-- Left: persistent file tree -->
+        <aside class="explorer-tree-pane">
+          <div class="explorer-pane-header">
+            <h3>EXPLORER</h3>
+          </div>
+          <div id="explorer-tree" class="explorer-tree">
+            <div class="empty-state-inline">Loading...</div>
+          </div>
+        </aside>
+
+        <!-- Right: file viewer -->
+        <main class="explorer-viewer-pane">
+          <div id="explorer-viewer" class="explorer-viewer">
+            <div class="empty-state">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <p>Select a file to view</p>
+              <span>Click any file in the tree on the left</span>
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <!-- History View — git commits + diff viewer -->
+    <section id="history-view" class="tab-content">
+      <header class="view-header">
+        <h1>History</h1>
+        <div class="header-actions">
+          <span class="branch-pill" id="current-branch">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+            <span id="current-branch-name">—</span>
+          </span>
+          <button class="btn btn-ghost btn-sm" id="history-refresh-btn">Refresh</button>
+        </div>
+      </header>
+
+      <div class="history-container">
+        <aside class="history-list-pane">
+          <div class="explorer-pane-header">
+            <h3>COMMITS</h3>
+            <span class="commit-count" id="commit-count">0</span>
+          </div>
+          <ul id="commits-list" class="commits-list">
+            <li class="empty-state-inline">Loading commits...</li>
+          </ul>
+        </aside>
+
+        <main class="history-detail-pane">
+          <div id="commit-detail-header" class="commit-detail-header">
+            <div class="empty-state">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <p>Select a commit</p>
+              <span>Click any commit on the left to see its diff</span>
+            </div>
+          </div>
+          <div id="commit-detail-diff" class="commit-detail-diff"></div>
+        </main>
+      </div>
     </section>
 
     <!-- Rules View -->
@@ -393,6 +480,8 @@
   <script src="/js/diff.js"></script>
   <script src="/js/tasks.js"></script>
   <script src="/js/rules.js"></script>
+  <script src="/js/browser.js"></script>
+  <script src="/js/history.js"></script>
   <script src="/js/integrations.js"></script>
 </body>
 </html>

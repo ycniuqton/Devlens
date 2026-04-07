@@ -8,6 +8,9 @@ export interface GitService {
   getStatus(): Promise<FileStatus[]>;
   getLog(limit?: number): Promise<LogEntry[]>;
   isRepo(): Promise<boolean>;
+  getCurrentBranch(): Promise<string>;
+  getCommitDiff(hash: string): Promise<string>;
+  getCommitFiles(hash: string): Promise<{ path: string; status: string }[]>;
 }
 
 export function createGitService(projectDir: string): GitService {
@@ -93,6 +96,42 @@ export function createGitService(projectDir: string): GitService {
 
     async isRepo(): Promise<boolean> {
       return git.checkIsRepo();
+    },
+
+    async getCurrentBranch(): Promise<string> {
+      try {
+        const status = await git.status();
+        return status.current || 'HEAD';
+      } catch {
+        return 'unknown';
+      }
+    },
+
+    async getCommitDiff(hash: string): Promise<string> {
+      try {
+        return await git.show([hash]);
+      } catch {
+        return '';
+      }
+    },
+
+    async getCommitFiles(hash: string): Promise<{ path: string; status: string }[]> {
+      try {
+        const raw = await git.raw(['show', '--name-status', '--format=', hash]);
+        const lines = raw.split('\n').filter(Boolean);
+        const result: { path: string; status: string }[] = [];
+        for (const line of lines) {
+          const parts = line.split('\t');
+          if (parts.length < 2) continue;
+          const code = parts[0].trim();
+          const file = parts[parts.length - 1];
+          const statusMap: Record<string, string> = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed' };
+          result.push({ path: file, status: statusMap[code[0]] || 'modified' });
+        }
+        return result;
+      } catch {
+        return [];
+      }
     },
   };
 }

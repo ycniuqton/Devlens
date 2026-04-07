@@ -12,6 +12,7 @@ import { diffRouter } from './routes/diff';
 import { tasksRouter, checkSessionLiveness } from './routes/tasks';
 import { integrationsRouter } from './routes/integrations';
 import { rulesRouter } from './routes/rules';
+import { browserRouter } from './routes/browser';
 
 export function createServer(options: ServerOptions) {
   const app = express();
@@ -46,6 +47,7 @@ export function createServer(options: ServerOptions) {
   app.use('/api/tasks', tasksRouter);
   app.use('/api/integrations', integrationsRouter);
   app.use('/api/rules', rulesRouter);
+  app.use('/api/browser', browserRouter);
 
   // Static files
   const publicDir = path.resolve(__dirname, '../public');

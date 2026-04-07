@@ -40,7 +40,7 @@ window.addEventListener('popstate', () => {
 // Load initial tab from URL — redirect / to /diff
 (function() {
   const path = location.pathname.replace('/', '');
-  const tab = ['diff', 'tasks', 'rules', 'integrations'].includes(path) ? path : 'diff';
+  const tab = ['diff', 'tasks', 'browser', 'history', 'rules', 'integrations'].includes(path) ? path : 'diff';
   if (!path || path === '') {
     history.replaceState(null, '', '/diff');
   }
