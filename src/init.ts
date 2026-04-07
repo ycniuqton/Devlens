@@ -25,6 +25,32 @@ curl -s -X POST "\$DEVLENS_URL" \\
 exit 0
 `;
 
+const SHUTDOWN_HOOK_SCRIPT = `#!/bin/bash
+# Devlens — stop dashboard on Claude Code session end
+# Reads stdin to satisfy hook protocol
+cat > /dev/null 2>&1
+
+PROJECT_DIR="\${CLAUDE_PROJECT_DIR:-$PWD}"
+RUNTIME_FILE="\$PROJECT_DIR/.devlens/runtime.json"
+
+[ ! -f "\$RUNTIME_FILE" ] && exit 0
+
+PID=$(grep -oE '"pid"[[:space:]]*:[[:space:]]*[0-9]+' "\$RUNTIME_FILE" 2>/dev/null | grep -oE "[0-9]+" | head -1)
+[ -z "\$PID" ] && exit 0
+
+# Verify the process is actually our devlens for this dir
+if ps -p "\$PID" -o args= 2>/dev/null | grep -qE "(devlens|dist/index\\.js).*--dir[= ]?\$PROJECT_DIR"; then
+  kill "\$PID" 2>/dev/null
+  for i in 1 2 3; do
+    sleep 0.5
+    kill -0 "\$PID" 2>/dev/null || break
+  done
+  kill -0 "\$PID" 2>/dev/null && kill -9 "\$PID" 2>/dev/null
+  rm -f "\$RUNTIME_FILE"
+fi
+exit 0
+`;
+
 const STARTUP_HOOK_SCRIPT = `#!/bin/bash
 # Devlens — auto-start dashboard on Claude Code session start
 DEVLENS_PORT=__PORT__
@@ -90,6 +116,7 @@ interface HookEntry {
 interface SettingsJson {
   hooks?: {
     SessionStart?: HookEntry[];
+    SessionEnd?: HookEntry[];
     PostToolUse?: HookEntry[];
   };
   [key: string]: any;
@@ -104,6 +131,7 @@ export function initDevlens(projectDir: string, port?: number) {
   const settingsFile = path.join(claudeDir, 'settings.json');
   const syncScriptPath = path.join(hooksDir, 'devlens-sync.sh');
   const startupScriptPath = path.join(hooksDir, 'devlens-startup.sh');
+  const shutdownScriptPath = path.join(hooksDir, 'devlens-shutdown.sh');
 
   // 1. Create .claude/hooks/ directory
   if (!fs.existsSync(hooksDir)) {
@@ -118,6 +146,9 @@ export function initDevlens(projectDir: string, port?: number) {
 
   fs.writeFileSync(startupScriptPath, STARTUP_HOOK_SCRIPT.replace(/__PORT__/g, portStr), { mode: 0o755 });
   console.log(`  Created hook: .claude/hooks/devlens-startup.sh (auto-start)`);
+
+  fs.writeFileSync(shutdownScriptPath, SHUTDOWN_HOOK_SCRIPT, { mode: 0o755 });
+  console.log(`  Created hook: .claude/hooks/devlens-shutdown.sh (auto-stop)`);
 
   // 3. Update .claude/settings.json
   let settings: SettingsJson = {};
@@ -142,6 +173,23 @@ export function initDevlens(projectDir: string, port?: number) {
       {
         type: 'command',
         command: `"$CLAUDE_PROJECT_DIR"/.claude/hooks/devlens-startup.sh`,
+      },
+    ],
+  });
+
+  // --- SessionEnd hook ---
+  if (!settings.hooks.SessionEnd) {
+    settings.hooks.SessionEnd = [];
+  }
+  settings.hooks.SessionEnd = settings.hooks.SessionEnd.filter(
+    (h) => !h.command?.includes('devlens-shutdown') && !h.hooks?.some((hk) => hk.command.includes('devlens-shutdown'))
+  );
+  settings.hooks.SessionEnd.push({
+    matcher: '',
+    hooks: [
+      {
+        type: 'command',
+        command: `"$CLAUDE_PROJECT_DIR"/.claude/hooks/devlens-shutdown.sh`,
       },
     ],
   });
@@ -284,7 +332,7 @@ export function uninstallDevlens(projectDir: string) {
     console.log(`  Removed: .claude/skills/devlens`);
   }
 
-  for (const script of ['devlens-sync.sh', 'devlens-startup.sh']) {
+  for (const script of ['devlens-sync.sh', 'devlens-startup.sh', 'devlens-shutdown.sh']) {
     const scriptPath = path.join(hooksDir, script);
     if (fs.existsSync(scriptPath)) {
       fs.unlinkSync(scriptPath);
@@ -300,6 +348,13 @@ export function uninstallDevlens(projectDir: string) {
         (h) => !h.command?.includes('devlens-startup') && !h.hooks?.some((hk) => hk.command.includes('devlens-startup'))
       );
       if (settings.hooks.SessionStart.length === 0) delete settings.hooks.SessionStart;
+    }
+
+    if (settings.hooks?.SessionEnd) {
+      settings.hooks.SessionEnd = settings.hooks.SessionEnd.filter(
+        (h) => !h.command?.includes('devlens-shutdown') && !h.hooks?.some((hk) => hk.command.includes('devlens-shutdown'))
+      );
+      if (settings.hooks.SessionEnd.length === 0) delete settings.hooks.SessionEnd;
     }
 
     if (settings.hooks?.PostToolUse) {
