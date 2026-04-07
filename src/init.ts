@@ -122,9 +122,48 @@ interface SettingsJson {
   [key: string]: any;
 }
 
+// Find and kill any existing devlens process for this project dir
+function killExistingDevlens(projectDir: string): boolean {
+  try {
+    const ps = require('child_process').execSync('ps -eo pid,args', { encoding: 'utf-8' });
+    const re = new RegExp(`node.*(devlens|dist/index\\.js).*--dir[= ]?${projectDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([ /]|$)`);
+    const lines = ps.split('\n');
+    let killed = false;
+    for (const line of lines) {
+      if (line.includes('grep')) continue;
+      if (!re.test(line)) continue;
+      const pid = parseInt(line.trim().split(/\s+/)[0], 10);
+      if (!pid) continue;
+      try {
+        process.kill(pid, 'SIGTERM');
+        killed = true;
+        console.log(`  Stopped existing devlens process (PID ${pid})`);
+        // Give it a moment to exit cleanly
+        const start = Date.now();
+        while (Date.now() - start < 1500) {
+          try { process.kill(pid, 0); } catch { break; }
+          require('child_process').execSync('sleep 0.1');
+        }
+        try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch {}
+      } catch {}
+    }
+    // Clean up stale runtime.json
+    const runtimeFile = path.join(projectDir, '.devlens', 'runtime.json');
+    if (fs.existsSync(runtimeFile)) {
+      try { fs.unlinkSync(runtimeFile); } catch {}
+    }
+    return killed;
+  } catch {
+    return false;
+  }
+}
+
 export function initDevlens(projectDir: string, port?: number) {
   const resolvedDir = path.resolve(projectDir);
   const derivedPort = port || portFromDir(resolvedDir);
+
+  // Kill any existing devlens process for this project so the new init takes effect
+  killExistingDevlens(resolvedDir);
 
   const claudeDir = path.join(resolvedDir, '.claude');
   const hooksDir = path.join(claudeDir, 'hooks');
