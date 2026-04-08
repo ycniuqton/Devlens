@@ -8,11 +8,13 @@ import { createGitService } from './services/git';
 import { createWatcher } from './services/watcher';
 import { createTaskStore } from './services/taskStore';
 import { createRulesService } from './services/rules';
+import { createSettingsService } from './services/settings';
 import { diffRouter } from './routes/diff';
 import { tasksRouter, checkSessionLiveness } from './routes/tasks';
 import { integrationsRouter } from './routes/integrations';
 import { rulesRouter } from './routes/rules';
 import { browserRouter } from './routes/browser';
+import { settingsRouter } from './routes/settings';
 
 export function createServer(options: ServerOptions) {
   const app = express();
@@ -26,12 +28,14 @@ export function createServer(options: ServerOptions) {
   const gitService = createGitService(options.projectDir);
   const taskStore = createTaskStore(options.projectDir);
   const rulesService = createRulesService(options.projectDir);
+  const settingsService = createSettingsService(options.projectDir);
   rulesService.ensureDefault();
 
   // Attach to app.locals for route access
   app.locals.gitService = gitService;
   app.locals.taskStore = taskStore;
   app.locals.rulesService = rulesService;
+  app.locals.settingsService = settingsService;
   app.locals.projectDir = options.projectDir;
   app.locals.port = options.port;
 
@@ -48,6 +52,7 @@ export function createServer(options: ServerOptions) {
   app.use('/api/integrations', integrationsRouter);
   app.use('/api/rules', rulesRouter);
   app.use('/api/browser', browserRouter);
+  app.use('/api/settings', settingsRouter);
 
   // Static files
   const publicDir = path.resolve(__dirname, '../public');
@@ -68,8 +73,10 @@ export function createServer(options: ServerOptions) {
     });
   }
 
-  // File watcher -> WebSocket broadcast
-  const watcher = createWatcher(options.projectDir, async () => {
+  // File watcher -> WebSocket broadcast (rebuildable when settings change)
+  let watcher: ReturnType<typeof createWatcher> | null = null;
+
+  const onWatcherChange = async () => {
     try {
       const diff = await gitService.getDiff();
       const status = await gitService.getStatus();
@@ -78,7 +85,26 @@ export function createServer(options: ServerOptions) {
     } catch {
       // Git service may fail if not a git repo
     }
-  });
+  };
+
+  function buildWatcher() {
+    watcher = createWatcher(
+      options.projectDir,
+      onWatcherChange,
+      settingsService.getChokidarIgnoreGlobs()
+    );
+  }
+
+  buildWatcher();
+
+  function reloadWatcher() {
+    if (watcher) {
+      watcher.close().catch(() => {});
+    }
+    buildWatcher();
+  }
+
+  app.locals.reloadWatcher = reloadWatcher;
 
   // Watch rules.md for external changes
   const rulesPath = path.join(options.projectDir, '.devlens', 'rules.md');

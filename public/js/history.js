@@ -2,7 +2,7 @@
 
 var historyLoaded = false;
 var historySelectedHash = null;
-var historyViewMode = localStorage.getItem('devlens-history-view') || 'line-by-line';
+var historyViewMode = localStorage.getItem('devlens-history-view') || 'side-by-side';
 var historyCachedData = null; // last loaded commit { hash, files, diff }
 
 async function loadBranchInfo() {
@@ -133,33 +133,49 @@ function renderCommitDetails(hash, data) {
   }
 
   const files = historySplitDiffByFile(data.diff);
-  diffEl.innerHTML = files.map((file) => {
-    const html = Diff2Html.html(file.diff, {
+
+  // Stash raw diffs on a closure-accessible array indexed by data-idx
+  const renderCommitFileBody = (section) => {
+    const body = section.querySelector('.commit-file-body');
+    if (!body || body.dataset.rendered === 'true') return;
+    const idx = parseInt(section.dataset.idx, 10);
+    const f = files[idx];
+    if (!f) return;
+    body.innerHTML = Diff2Html.html(f.diff, {
       drawFileList: false,
       matching: 'lines',
       outputFormat: historyViewMode,
       colorScheme: 'dark',
     });
-    return `
-      <div class="commit-file-section" data-file="${escapeAttrHistory(file.name)}">
-        <div class="commit-file-header">
-          <svg class="commit-file-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-          <span class="commit-file-name">${escapeHtmlHistory(file.name)}</span>
-        </div>
-        <div class="commit-file-body">${html}</div>
-      </div>
-    `;
-  }).join('');
+    body.dataset.rendered = 'true';
+  };
 
-  // Wire interactions
+  diffEl.innerHTML = files.map((file, i) => `
+    <div class="commit-file-section" data-file="${escapeAttrHistory(file.name)}" data-idx="${i}">
+      <div class="commit-file-header">
+        <svg class="commit-file-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        <span class="commit-file-name">${escapeHtmlHistory(file.name)}</span>
+      </div>
+      <div class="commit-file-body" data-rendered="false"></div>
+    </div>
+  `).join('');
+
+  // Wire collapse/expand with lazy render on first expand
   diffEl.querySelectorAll('.commit-file-header').forEach(h => {
     h.addEventListener('click', () => {
-      h.closest('.commit-file-section').classList.toggle('expanded');
+      const section = h.closest('.commit-file-section');
+      section.classList.toggle('expanded');
+      if (section.classList.contains('expanded')) {
+        renderCommitFileBody(section);
+      }
     });
   });
 
   document.getElementById('commit-expand-all')?.addEventListener('click', () => {
-    diffEl.querySelectorAll('.commit-file-section').forEach(s => s.classList.add('expanded'));
+    diffEl.querySelectorAll('.commit-file-section').forEach(s => {
+      s.classList.add('expanded');
+      renderCommitFileBody(s);
+    });
   });
   document.getElementById('commit-collapse-all')?.addEventListener('click', () => {
     diffEl.querySelectorAll('.commit-file-section').forEach(s => s.classList.remove('expanded'));

@@ -1,22 +1,26 @@
-import chokidar from 'chokidar';
+import chokidar, { FSWatcher } from 'chokidar';
 
-export function createWatcher(projectDir: string, onChange: () => void) {
+export function createWatcher(
+  projectDir: string,
+  onChange: () => void,
+  ignored: (string | RegExp)[] = [
+    /(^|[\/\\])\../,
+    '**/node_modules/**',
+    '**/.git/**',
+    '**/.devlens/**',
+  ]
+): FSWatcher {
   let debounceTimer: NodeJS.Timeout | null = null;
 
   const watcher = chokidar.watch(projectDir, {
-    ignored: [
-      /(^|[\/\\])\../,       // dotfiles
-      '**/node_modules/**',
-      '**/.git/**',
-      '**/.devlens/**',
-    ],
+    ignored,
     persistent: true,
     ignoreInitial: true,
   });
 
   const debouncedOnChange = () => {
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(onChange, 300);
+    debounceTimer = setTimeout(onChange, 500);
   };
 
   watcher.on('change', debouncedOnChange);

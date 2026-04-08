@@ -42,8 +42,10 @@ browserRouter.get('/commit/:hash', async (req: Request, res: Response) => {
 // GET /api/browser/files?path=... — list directory contents
 browserRouter.get('/files', (req: Request, res: Response) => {
   const projectDir: string = req.app.locals.projectDir;
+  const settings = req.app.locals.settingsService;
   const relPath = (req.query.path as string) || '';
-  const entries = listDirectory(projectDir, relPath);
+  const ignoreSet = settings ? settings.getIgnoreNameSet() : undefined;
+  const entries = listDirectory(projectDir, relPath, ignoreSet);
   res.json({ path: relPath, entries });
 });
 

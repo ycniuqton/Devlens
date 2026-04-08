@@ -2012,6 +2012,75 @@ body {
 }
 
 /* ============================================================
+   Settings Tab
+   ============================================================ */
+.settings-container { max-width: 800px; width: 100%; }
+
+.settings-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-5) var(--sp-6);
+}
+
+.settings-section h2 {
+  font-size: var(--text-md);
+  font-weight: 600;
+  margin-bottom: var(--sp-2);
+}
+
+.settings-subheader {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  margin: var(--sp-5) 0 var(--sp-3);
+}
+
+.settings-presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--sp-2);
+}
+
+.preset-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease);
+  font-size: var(--text-sm);
+}
+
+.preset-checkbox:hover { border-color: var(--color-text-muted); }
+.preset-checkbox input { cursor: pointer; }
+.preset-name { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); }
+
+.settings-textarea {
+  width: 100%;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  padding: var(--sp-3) var(--sp-4);
+  resize: vertical;
+  min-height: 120px;
+}
+
+.settings-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-subtle);
+}
+
+/* ============================================================
    Responsive
    ============================================================ */
 @media (max-width: 900px) {

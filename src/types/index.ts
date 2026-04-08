@@ -92,6 +92,6 @@ export interface DevlensConfig {
 }
 
 export interface WsMessage {
-  type: 'file-changed' | 'diff-update' | 'status-update' | 'task-update' | 'todo-update' | 'claude-tasks-update' | 'rules-update' | 'commit-approval-update';
+  type: 'file-changed' | 'diff-update' | 'status-update' | 'task-update' | 'todo-update' | 'claude-tasks-update' | 'rules-update' | 'commit-approval-update' | 'settings-update';
   payload: unknown;
 }

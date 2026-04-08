@@ -1,12 +1,12 @@
 // Diff viewer
 var currentFilter = 'all';
-var currentViewMode = 'line-by-line';
-var fileListMode = localStorage.getItem('devlens-file-view') || 'flat';
+var currentViewMode = localStorage.getItem('devlens-diff-view') || 'side-by-side';
+var fileListMode = localStorage.getItem('devlens-file-view') || 'tree';
 var diffFiles = [];
 var currentFiles = [];
 
-// Restore file list view mode from localStorage
-(function restoreFileViewMode() {
+// Restore view mode + file list mode from localStorage
+(function restoreDiffSettings() {
   const flatBtn = document.getElementById('file-view-flat');
   const treeBtn = document.getElementById('file-view-tree');
   if (fileListMode === 'tree') {
@@ -16,6 +16,12 @@ var currentFiles = [];
     flatBtn?.classList.add('active');
     treeBtn?.classList.remove('active');
   }
+
+  // Restore active button for diff view mode (split / unified)
+  document.querySelectorAll('[data-view]').forEach(b => {
+    if (b.dataset.view === currentViewMode) b.classList.add('active');
+    else b.classList.remove('active');
+  });
 })();
 
 // Filter and view toggle
@@ -34,6 +40,7 @@ document.querySelector('.header-actions')?.addEventListener('click', (e) => {
     document.querySelectorAll('[data-view]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentViewMode = btn.dataset.view;
+    localStorage.setItem('devlens-diff-view', currentViewMode);
     renderAllFiles();
   }
 });
@@ -56,11 +63,12 @@ document.getElementById('file-list-items').addEventListener('click', (e) => {
   document.querySelectorAll('#file-list-items li').forEach(l => l.classList.remove('selected'));
   li.classList.add('selected');
 
-  // Collapse all, expand only the clicked file
+  // Collapse all, expand only the clicked file (lazy-render its body)
   const sections = document.querySelectorAll('.diff-file-section');
   for (const section of sections) {
     if (section.dataset.file === fileName) {
       section.classList.add('expanded');
+      renderFileBodyIfNeeded(section);
     } else {
       section.classList.remove('expanded');
     }
@@ -198,21 +206,12 @@ function renderAllFiles() {
     return;
   }
 
-  const outputFormat = currentViewMode === 'side-by-side' ? 'side-by-side' : 'line-by-line';
-
-  // First file expanded, rest collapsed
+  // Render only headers — diffs are computed lazily on expand
+  // diffFiles[i].diff holds the raw unified diff string for this file
   container.innerHTML = diffFiles.map((file, i) => {
-    const diffHtml = Diff2Html.html(file.diff, {
-      drawFileList: false,
-      matching: 'lines',
-      outputFormat: outputFormat,
-      colorScheme: 'dark',
-    });
-
     const shortName = file.name.split('/').pop();
-
     return `
-      <div class="diff-file-section ${i === 0 ? 'expanded' : ''}" data-file="${file.name}">
+      <div class="diff-file-section ${i === 0 ? 'expanded' : ''}" data-file="${file.name}" data-idx="${i}">
         <div class="diff-file-header" onclick="toggleFileSection(this)">
           <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="9 18 15 12 9 6"/>
@@ -220,16 +219,42 @@ function renderAllFiles() {
           <span class="diff-file-name">${file.name}</span>
           <span class="diff-file-badge">${shortName}</span>
         </div>
-        <div class="diff-file-body">${diffHtml}</div>
+        <div class="diff-file-body" data-rendered="false"></div>
       </div>
     `;
   }).join('');
+
+  // Pre-render only the first (expanded by default) file
+  const first = container.querySelector('.diff-file-section.expanded');
+  if (first) renderFileBodyIfNeeded(first);
 }
 
-// Chevron click — toggle just this file, don't touch others
+// Render the diff HTML for a file section if not already done
+function renderFileBodyIfNeeded(section) {
+  const body = section.querySelector('.diff-file-body');
+  if (!body || body.dataset.rendered === 'true') return;
+
+  const idx = parseInt(section.dataset.idx, 10);
+  const file = diffFiles[idx];
+  if (!file) return;
+
+  const outputFormat = currentViewMode === 'side-by-side' ? 'side-by-side' : 'line-by-line';
+  body.innerHTML = Diff2Html.html(file.diff, {
+    drawFileList: false,
+    matching: 'lines',
+    outputFormat: outputFormat,
+    colorScheme: 'dark',
+  });
+  body.dataset.rendered = 'true';
+}
+
+// Chevron click — toggle just this file, lazy-render on first expand
 function toggleFileSection(headerEl) {
   const section = headerEl.closest('.diff-file-section');
   section.classList.toggle('expanded');
+  if (section.classList.contains('expanded')) {
+    renderFileBodyIfNeeded(section);
+  }
 }
 
 var STATUS_LABELS = { modified: 'M', added: 'A', deleted: 'D', untracked: 'U', renamed: 'R' };

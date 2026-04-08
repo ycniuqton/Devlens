@@ -8,7 +8,7 @@ export interface FileEntry {
   size?: number;
 }
 
-const IGNORE = new Set(['.git', 'node_modules', '.devlens', 'dist', '.next', '.nuxt', '.cache']);
+const FALLBACK_IGNORE = new Set(['.git', 'node_modules', '.devlens', 'dist', '.next', '.nuxt', '.cache']);
 
 function isSafePath(projectDir: string, target: string): boolean {
   const abs = path.resolve(projectDir, target);
@@ -16,16 +16,17 @@ function isSafePath(projectDir: string, target: string): boolean {
   return abs === root || abs.startsWith(root + path.sep);
 }
 
-export function listDirectory(projectDir: string, relPath: string): FileEntry[] {
+export function listDirectory(projectDir: string, relPath: string, ignoreSet?: Set<string>): FileEntry[] {
   if (!isSafePath(projectDir, relPath)) return [];
   const abs = path.resolve(projectDir, relPath);
   if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) return [];
 
   const entries = fs.readdirSync(abs, { withFileTypes: true });
   const result: FileEntry[] = [];
+  const ignored = ignoreSet || FALLBACK_IGNORE;
 
   for (const entry of entries) {
-    if (IGNORE.has(entry.name)) continue;
+    if (ignored.has(entry.name)) continue;
     if (entry.name.startsWith('.') && entry.name !== '.gitignore' && entry.name !== '.env.example') continue;
 
     const entryRel = relPath ? path.posix.join(relPath, entry.name) : entry.name;
