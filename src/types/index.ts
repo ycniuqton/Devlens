@@ -14,6 +14,7 @@ export interface FileStatus {
 export interface LogEntry {
   hash: string;
   message: string;
+  body?: string;
   author: string;
   date: string;
 }

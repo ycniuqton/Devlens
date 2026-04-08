@@ -4,6 +4,7 @@ var historyLoaded = false;
 var historySelectedHash = null;
 var historyViewMode = localStorage.getItem('devlens-history-view') || 'side-by-side';
 var historyCachedData = null; // last loaded commit { hash, files, diff }
+var historyCommits = [];      // last loaded commit list (for full message lookup)
 
 async function loadBranchInfo() {
   try {
@@ -20,6 +21,7 @@ async function loadCommits() {
   try {
     const res = await fetch('/api/browser/commits?limit=100');
     const commits = await res.json();
+    historyCommits = commits;
     document.getElementById('commit-count').textContent = commits.length;
 
     if (!commits.length) {
@@ -27,7 +29,9 @@ async function loadCommits() {
       return;
     }
 
-    list.innerHTML = commits.map(c => `
+    list.innerHTML = commits.map(c => {
+      const fullMessage = c.body ? `${c.message}\n\n${c.body}` : c.message;
+      return `
       <li class="commit-item" data-hash="${c.hash}">
         <div class="commit-marker"></div>
         <div class="commit-content">
@@ -38,8 +42,16 @@ async function loadCommits() {
             <span class="commit-date">${formatRelativeDate(c.date)}</span>
           </div>
         </div>
-      </li>
-    `).join('');
+        <div class="commit-tooltip">
+          <div class="commit-tooltip-message">${escapeHtmlHistory(fullMessage)}</div>
+          <div class="commit-tooltip-meta">
+            <span>${escapeHtmlHistory(c.author)}</span>
+            <span>·</span>
+            <span>${new Date(c.date).toLocaleString()}</span>
+          </div>
+        </div>
+      </li>`;
+    }).join('');
 
     list.querySelectorAll('.commit-item').forEach(item => {
       item.addEventListener('click', () => {
@@ -99,11 +111,26 @@ function renderCommitDetails(hash, data) {
   if (!headerEl || !diffEl) return;
 
   const isUnified = historyViewMode === 'line-by-line';
+  const commit = historyCommits.find(c => c.hash === hash) || {};
+  const subject = commit.message || '';
+  const body = commit.body || '';
+  const author = commit.author || '';
+  const date = commit.date ? new Date(commit.date).toLocaleString() : '';
 
   headerEl.innerHTML = `
     <div class="commit-header-content">
-      <div class="commit-header-hash">${hash}</div>
-      <div class="commit-header-files">${data.files.length} file(s) changed</div>
+      <div class="commit-header-top">
+        <div class="commit-header-hash">${hash}</div>
+        <div class="commit-header-meta">
+          ${author ? `<span>${escapeHtmlHistory(author)}</span>` : ''}
+          ${date ? `<span>·</span><span>${date}</span>` : ''}
+          <span>·</span><span>${data.files.length} file(s)</span>
+        </div>
+      </div>
+      <div class="commit-header-message">
+        <div class="commit-header-subject">${escapeHtmlHistory(subject)}</div>
+        ${body ? `<pre class="commit-header-body">${escapeHtmlHistory(body)}</pre>` : ''}
+      </div>
       <div class="commit-header-actions">
         <div class="btn-group">
           <button class="btn btn-ghost btn-sm ${!isUnified ? 'active' : ''}" id="history-view-split" title="Side by side">
@@ -134,6 +161,10 @@ function renderCommitDetails(hash, data) {
 
   const files = historySplitDiffByFile(data.diff);
 
+  // Build a path → status map from data.files (e.g. "added", "modified", "deleted", "renamed")
+  const statusByPath = {};
+  for (const f of (data.files || [])) statusByPath[f.path] = f.status;
+
   // Stash raw diffs on a closure-accessible array indexed by data-idx
   const renderCommitFileBody = (section) => {
     const body = section.querySelector('.commit-file-body');
@@ -150,15 +181,20 @@ function renderCommitDetails(hash, data) {
     body.dataset.rendered = 'true';
   };
 
-  diffEl.innerHTML = files.map((file, i) => `
+  diffEl.innerHTML = files.map((file, i) => {
+    const status = statusByPath[file.name] || 'modified';
+    return `
     <div class="commit-file-section" data-file="${escapeAttrHistory(file.name)}" data-idx="${i}">
-      <div class="commit-file-header">
+      <div class="commit-file-header file-status-${status}">
         <svg class="commit-file-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        <span class="commit-file-status-icon ${status}" title="${status}">${commitFileStatusIcon(status)}</span>
         <span class="commit-file-name">${escapeHtmlHistory(file.name)}</span>
+        <span class="commit-file-status-tag ${status}">${commitFileStatusLabel(status)}</span>
       </div>
       <div class="commit-file-body" data-rendered="false"></div>
     </div>
-  `).join('');
+    `;
+  }).join('');
 
   // Wire collapse/expand with lazy render on first expand
   diffEl.querySelectorAll('.commit-file-header').forEach(h => {
@@ -196,6 +232,28 @@ function renderCommitDetails(hash, data) {
 
 function escapeAttrHistory(str) {
   return String(str).replace(/"/g, '&quot;');
+}
+
+function commitFileStatusIcon(status) {
+  // SVG icons for each git status
+  const svg = (path) => `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+  switch (status) {
+    case 'added':    return svg('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>'); // +
+    case 'deleted':  return svg('<line x1="5" y1="12" x2="19" y2="12"/>');                                       // —
+    case 'renamed':  return svg('<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>'); // ↻
+    case 'modified':
+    default:         return svg('<circle cx="12" cy="12" r="3"/>');                                              // •
+  }
+}
+
+function commitFileStatusLabel(status) {
+  switch (status) {
+    case 'added':    return 'NEW';
+    case 'deleted':  return 'DEL';
+    case 'renamed':  return 'REN';
+    case 'modified': return 'MOD';
+    default:         return status.toUpperCase();
+  }
 }
 
 function escapeHtmlHistory(str) {

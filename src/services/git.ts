@@ -86,9 +86,10 @@ export function createGitService(projectDir: string): GitService {
 
     async getLog(limit = 20): Promise<LogEntry[]> {
       const log = await git.log({ maxCount: limit });
-      return log.all.map((entry) => ({
+      return log.all.map((entry: any) => ({
         hash: entry.hash.substring(0, 8),
         message: entry.message,
+        body: entry.body || '',
         author: entry.author_name,
         date: entry.date,
       }));

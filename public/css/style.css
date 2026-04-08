@@ -1782,8 +1782,15 @@ body {
 
 .commit-header-content {
   display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.commit-header-top {
+  display: flex;
   align-items: center;
   gap: var(--sp-3);
+  flex-wrap: wrap;
 }
 
 .commit-header-hash {
@@ -1796,15 +1803,112 @@ body {
   border-radius: var(--radius-sm);
 }
 
+.commit-header-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
 .commit-header-files {
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
+.commit-header-message {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-4);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.commit-header-subject {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.commit-header-body {
+  margin: var(--sp-2) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: var(--leading-normal);
+}
+
 .commit-header-actions {
-  margin-left: auto;
   display: flex;
   gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+/* Hover tooltip on commit list items */
+.commit-item { position: relative; }
+
+.commit-tooltip {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-4);
+  min-width: 320px;
+  max-width: 480px;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: left center;
+  transform: translateY(-50%) scale(0.95);
+  transition: opacity var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
+  z-index: 50;
+}
+
+.commit-item:hover .commit-tooltip {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+  transition-delay: 250ms;
+}
+
+.commit-tooltip::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-right: 6px solid var(--color-border);
+}
+
+.commit-tooltip-message {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: var(--leading-normal);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.commit-tooltip-meta {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: 10px;
+  color: var(--color-text-muted);
 }
 
 .commit-detail-diff {
@@ -1849,7 +1953,47 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
+
+/* File status icon (left of filename) */
+.commit-file-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.commit-file-status-icon.added    { color: var(--color-success); background: var(--color-success-subtle); }
+.commit-file-status-icon.modified { color: var(--color-warning); background: var(--color-warning-subtle); }
+.commit-file-status-icon.deleted  { color: var(--color-danger);  background: var(--color-danger-subtle); }
+.commit-file-status-icon.renamed  { color: var(--color-purple);  background: var(--color-purple-subtle); }
+
+/* File status text tag (right side) */
+.commit-file-status-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.commit-file-status-tag.added    { color: var(--color-success); background: var(--color-success-subtle); }
+.commit-file-status-tag.modified { color: var(--color-warning); background: var(--color-warning-subtle); }
+.commit-file-status-tag.deleted  { color: var(--color-danger);  background: var(--color-danger-subtle); }
+.commit-file-status-tag.renamed  { color: var(--color-purple);  background: var(--color-purple-subtle); }
+
+/* Filename color hints based on status */
+.commit-file-header.file-status-deleted .commit-file-name {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
+}
+.commit-file-header.file-status-added .commit-file-name { color: var(--color-success); }
 
 .commit-file-body {
   display: none;
