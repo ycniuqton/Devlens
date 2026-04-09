@@ -26,14 +26,49 @@ exit 0
 `;
 
 const SHUTDOWN_HOOK_SCRIPT = `#!/bin/bash
-# Devlens — stop dashboard on Claude Code session end
-# Reads stdin to satisfy hook protocol
-cat > /dev/null 2>&1
+# Devlens — stop dashboard on Claude Code session end (only if no other sessions remain in this folder)
+INPUT=$(cat 2>/dev/null)
 
 PROJECT_DIR="\${CLAUDE_PROJECT_DIR:-$PWD}"
 RUNTIME_FILE="\$PROJECT_DIR/.devlens/runtime.json"
+SESSIONS_DIR="\$HOME/.claude/sessions"
 
 [ ! -f "\$RUNTIME_FILE" ] && exit 0
+
+# Identify the exiting session so we can exclude it from the live-count
+EXITING_SESSION_ID=$(echo "\$INPUT" | grep -oE '"session_id":"[^"]*"' | sed 's/"session_id":"//;s/"$//' | head -1)
+EXITING_PID=""
+if [ -n "\$EXITING_SESSION_ID" ] && [ -d "\$SESSIONS_DIR" ]; then
+  for f in "\$SESSIONS_DIR"/*.json; do
+    [ -f "\$f" ] || continue
+    if grep -q "\\"sessionId\\":\\"\$EXITING_SESSION_ID\\"" "\$f" 2>/dev/null; then
+      EXITING_PID=$(grep -oE '"pid":[0-9]+' "\$f" | grep -oE '[0-9]+' | head -1)
+      break
+    fi
+  done
+fi
+
+# Are there OTHER live Claude sessions for this same project directory?
+OTHER_ALIVE=0
+if [ -d "\$SESSIONS_DIR" ]; then
+  for f in "\$SESSIONS_DIR"/*.json; do
+    [ -f "\$f" ] || continue
+    SPID=$(grep -oE '"pid":[0-9]+' "\$f" | grep -oE '[0-9]+' | head -1)
+    SCWD=$(grep -oE '"cwd":"[^"]*"' "\$f" | sed 's/"cwd":"//;s/"$//' | head -1)
+    [ -z "\$SPID" ] && continue
+    [ "\$SCWD" != "\$PROJECT_DIR" ] && continue
+    [ -n "\$EXITING_PID" ] && [ "\$SPID" = "\$EXITING_PID" ] && continue
+    if kill -0 "\$SPID" 2>/dev/null; then
+      OTHER_ALIVE=1
+      break
+    fi
+  done
+fi
+
+# Other Claude sessions still running in this folder — keep devlens alive
+if [ "\$OTHER_ALIVE" = "1" ]; then
+  exit 0
+fi
 
 PID=$(grep -oE '"pid"[[:space:]]*:[[:space:]]*[0-9]+' "\$RUNTIME_FILE" 2>/dev/null | grep -oE "[0-9]+" | head -1)
 [ -z "\$PID" ] && exit 0
@@ -122,18 +157,21 @@ interface SettingsJson {
   [key: string]: any;
 }
 
-// Find and kill any existing devlens process for this project dir
+// Find and kill any existing devlens server process for this project dir
 function killExistingDevlens(projectDir: string): boolean {
   try {
     const ps = require('child_process').execSync('ps -eo pid,args', { encoding: 'utf-8' });
-    const re = new RegExp(`node.*(devlens|dist/index\\.js).*--dir[= ]?${projectDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([ /]|$)`);
+    // Must contain "start" (the server subcommand) AND --dir <project>; excludes "init"/"uninstall"
+    const re = new RegExp(`node.*(devlens|dist/index\\.js)\\s+start\\s.*--dir[= ]?${projectDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([ /]|$)`);
     const lines = ps.split('\n');
     let killed = false;
+    const selfPid = process.pid;
     for (const line of lines) {
       if (line.includes('grep')) continue;
       if (!re.test(line)) continue;
       const pid = parseInt(line.trim().split(/\s+/)[0], 10);
       if (!pid) continue;
+      if (pid === selfPid) continue;
       try {
         process.kill(pid, 'SIGTERM');
         killed = true;
