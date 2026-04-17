@@ -30,6 +30,8 @@ export function createServer(options: ServerOptions) {
   const rulesService = createRulesService(options.projectDir);
   const settingsService = createSettingsService(options.projectDir);
   rulesService.ensureDefault();
+  // Always re-enable direct IP on startup so users are never permanently locked out
+  settingsService.updateSettings({ directIpAccess: true });
 
   // Attach to app.locals for route access
   app.locals.gitService = gitService;
