@@ -154,8 +154,8 @@ document.getElementById('browser-refresh-btn')?.addEventListener('click', () => 
 });
 
 // Lazy load when tab opens
-document.querySelector('[data-tab="browser"]')?.addEventListener('click', () => {
-  if (!Object.keys(explorerCache).length) renderTree();
+window.addEventListener('tab-activated', (e) => {
+  if (e.detail.tab === 'browser' && !Object.keys(explorerCache).length) renderTree();
 });
 
 if (location.pathname === '/browser') {

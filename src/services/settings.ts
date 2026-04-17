@@ -3,6 +3,7 @@ import path from 'path';
 
 export interface DevlensSettings {
   ignorePatterns: string[];
+  ngrokAuthToken?: string;
 }
 
 // Common heavy/noisy directories that should be ignored by default
@@ -33,6 +34,7 @@ export interface SettingsService {
   getSettings(): DevlensSettings;
   updateSettings(input: Partial<DevlensSettings>): DevlensSettings;
   getIgnorePatterns(): string[];
+  getNgrokAuthToken(): string | undefined;
   /** Convert ignore patterns to chokidar-compatible globs */
   getChokidarIgnoreGlobs(): (string | RegExp)[];
   /** Convert ignore patterns to a Set of names for the file explorer */
@@ -79,6 +81,7 @@ export function createSettingsService(projectDir: string): SettingsService {
       const current = load();
       const merged: DevlensSettings = {
         ignorePatterns: input.ignorePatterns ?? current.ignorePatterns,
+        ngrokAuthToken: input.ngrokAuthToken !== undefined ? input.ngrokAuthToken : current.ngrokAuthToken,
       };
       // Dedupe + trim + drop empties
       merged.ignorePatterns = Array.from(
@@ -92,6 +95,10 @@ export function createSettingsService(projectDir: string): SettingsService {
 
     getIgnorePatterns(): string[] {
       return load().ignorePatterns;
+    },
+
+    getNgrokAuthToken(): string | undefined {
+      return load().ngrokAuthToken;
     },
 
     getChokidarIgnoreGlobs(): (string | RegExp)[] {

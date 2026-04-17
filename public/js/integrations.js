@@ -42,11 +42,15 @@ async function startTunnelAction(provider) {
     });
     const data = await res.json();
     if (data.ok) {
+      hideNgrokTokenSetup();
       updateTunnelUI({ status: 'connected', url: data.url });
       showToast(`Tunnel connected: ${data.url}`, 'success');
+    } else if (data.error === 'ngrok_no_token') {
+      updateTunnelUI({ status: 'disconnected' });
+      showNgrokTokenSetup();
     } else {
       updateTunnelUI({ status: 'error' });
-      showToast(data.error || 'Tunnel failed', 'error');
+      showToast(data.message || data.error || 'Tunnel failed', 'error');
     }
   } catch (err) {
     updateTunnelUI({ status: 'error' });
@@ -69,6 +73,32 @@ function copyTunnelUrl() {
   navigator.clipboard.writeText(url).then(() => {
     showToast('URL copied!', 'success');
   });
+}
+
+function showNgrokTokenSetup() {
+  document.getElementById('ngrok-token-setup').style.display = '';
+  document.getElementById('ngrok-token-input').focus();
+}
+
+function hideNgrokTokenSetup() {
+  document.getElementById('ngrok-token-setup').style.display = 'none';
+  document.getElementById('ngrok-token-input').value = '';
+}
+
+async function saveNgrokToken() {
+  const token = document.getElementById('ngrok-token-input').value.trim();
+  if (!token) { showToast('Please enter your ngrok auth token', 'error'); return; }
+  try {
+    await fetch('/api/integrations/tunnel/ngrok-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    showToast('Token saved, connecting...', 'info');
+    await startTunnelAction('ngrok');
+  } catch {
+    showToast('Failed to save token', 'error');
+  }
 }
 
 // ---- Task Managers (Jira / Linear) ----
@@ -187,8 +217,9 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// Load on tab click
-document.querySelector('[data-tab="integrations"]')?.addEventListener('click', () => {
-  loadTunnelStatus();
-  loadIntegrations();
+window.addEventListener('tab-activated', (e) => {
+  if (e.detail.tab === 'integrations') {
+    loadTunnelStatus();
+    loadIntegrations();
+  }
 });

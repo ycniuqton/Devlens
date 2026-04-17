@@ -1326,6 +1326,14 @@ body {
 
 .tunnel-buttons { display: flex; gap: var(--sp-3); }
 
+.ngrok-token-card {
+  margin-top: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
 .tunnel-active-card {
   display: flex;
   align-items: center;

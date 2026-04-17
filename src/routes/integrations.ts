@@ -40,8 +40,15 @@ integrationsRouter.get('/tunnel/status', (_req: Request, res: Response) => {
 integrationsRouter.post('/tunnel/start', async (req: Request, res: Response) => {
   const { provider } = req.body;
   const port = req.app.locals.port || 5157;
+  const settingsService = req.app.locals.settingsService;
+  const ngrokToken = settingsService?.getNgrokAuthToken();
+
+  if (provider === 'ngrok' && !ngrokToken) {
+    return res.status(400).json({ error: 'ngrok_no_token', message: 'ngrok auth token not configured' });
+  }
+
   try {
-    const url = await startTunnel(port, provider || 'cloudflare');
+    const url = await startTunnel(port, provider || 'cloudflare', ngrokToken);
     res.json({ ok: true, url, provider: provider || 'cloudflare' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -51,6 +58,24 @@ integrationsRouter.post('/tunnel/start', async (req: Request, res: Response) => 
 integrationsRouter.post('/tunnel/stop', (_req: Request, res: Response) => {
   stopTunnel();
   res.json({ ok: true });
+});
+
+integrationsRouter.get('/tunnel/ngrok-token', (req: Request, res: Response) => {
+  const settingsService = req.app.locals.settingsService;
+  const token = settingsService?.getNgrokAuthToken();
+  res.json({ configured: !!token });
+});
+
+integrationsRouter.post('/tunnel/ngrok-token', (req: Request, res: Response) => {
+  try {
+    const { token } = req.body;
+    const settingsService = req.app.locals.settingsService;
+    if (!settingsService) return res.status(500).json({ error: 'Settings service not available' });
+    settingsService.updateSettings({ ngrokAuthToken: token || undefined });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 integrationsRouter.get('/jira/issues', async (req: Request, res: Response) => {

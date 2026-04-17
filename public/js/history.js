@@ -280,8 +280,8 @@ document.getElementById('history-refresh-btn')?.addEventListener('click', () => 
 });
 
 // Lazy load when tab opens
-document.querySelector('[data-tab="history"]')?.addEventListener('click', () => {
-  if (!historyLoaded) {
+window.addEventListener('tab-activated', (e) => {
+  if (e.detail.tab === 'history' && !historyLoaded) {
     loadBranchInfo();
     loadCommits();
   }

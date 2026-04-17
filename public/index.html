@@ -368,7 +368,19 @@
                 ngrok
               </button>
             </div>
-            <p class="section-hint">Requires <code>cloudflared</code> or <code>ngrok</code> installed on your system.</p>
+            <p class="section-hint">Cloudflare Tunnel works out of the box. ngrok requires a free auth token.</p>
+          </div>
+
+          <!-- ngrok token setup (shown when token missing) -->
+          <div id="ngrok-token-setup" style="display:none" class="ngrok-token-card">
+            <p style="margin:0 0 var(--sp-3);color:var(--color-text-secondary);font-size:var(--text-sm)">
+              ngrok requires a free auth token. <a href="https://dashboard.ngrok.com/get-started/your-authtoken" target="_blank" style="color:var(--color-primary-hover)">Get yours here</a>.
+            </p>
+            <div style="display:flex;gap:var(--sp-2);align-items:center">
+              <input type="password" id="ngrok-token-input" placeholder="Paste your ngrok auth token" style="flex:1;padding:var(--sp-2) var(--sp-3);background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-sm);color:var(--color-text);font-size:var(--text-sm)">
+              <button class="btn btn-primary btn-sm" onclick="saveNgrokToken()">Save &amp; Connect</button>
+              <button class="btn btn-ghost btn-sm" onclick="hideNgrokTokenSetup()">Cancel</button>
+            </div>
           </div>
         </div>
 

@@ -21,6 +21,7 @@ function switchTab(tab) {
   if (navItem) navItem.classList.add('active');
   const view = document.getElementById(tab + '-view');
   if (view) view.classList.add('active');
+  window.dispatchEvent(new CustomEvent('tab-activated', { detail: { tab } }));
 }
 
 navItems.forEach(item => {

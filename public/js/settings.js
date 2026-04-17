@@ -76,8 +76,8 @@ function escapeAttrSettings(str) {
 
 document.getElementById('save-settings-btn')?.addEventListener('click', saveSettings);
 
-document.querySelector('[data-tab="settings"]')?.addEventListener('click', () => {
-  if (!settingsLoaded) loadSettings();
+window.addEventListener('tab-activated', (e) => {
+  if (e.detail.tab === 'settings' && !settingsLoaded) loadSettings();
 });
 
 if (location.pathname === '/settings') {
