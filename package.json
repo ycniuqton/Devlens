@@ -1,6 +1,6 @@
 {
   "name": "@ycniuqton/devlens",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "publishConfig": {
     "access": "public"
   },
@@ -29,7 +29,7 @@
   },
   "homepage": "https://github.com/ycniuqton/Devlens#readme",
   "dependencies": {
-    "@ycniuqton/devlens": "^0.1.11",
+    "@ycniuqton/devlens": "^0.1.12",
     "better-sqlite3": "^12.8.0",
     "chokidar": "^3.6.0",
     "cloudflared": "^0.7.1",

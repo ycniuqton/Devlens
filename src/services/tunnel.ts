@@ -194,6 +194,10 @@ export function stopTunnel() {
     state.process.kill();
     state.process = null;
   }
+  // Kill any stale cloudflared/ngrok processes that may have survived a restart
+  try {
+    require('child_process').execSync('pkill -f "cloudflared tunnel" 2>/dev/null; pkill -f "ngrok http" 2>/dev/null', { stdio: 'ignore' });
+  } catch { /* ignore */ }
   state.url = null;
   state.status = 'disconnected';
   state.provider = null;
