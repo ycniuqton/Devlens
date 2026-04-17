@@ -371,6 +371,18 @@
             <p class="section-hint">Cloudflare Tunnel works out of the box. ngrok requires a free auth token.</p>
           </div>
 
+          <!-- Direct IP access toggle -->
+          <div class="direct-ip-row">
+            <div>
+              <span class="direct-ip-label">Direct IP Access</span>
+              <span class="direct-ip-desc">Allow access via <code>http://IP:PORT</code>. Disable to restrict access to tunnel only.</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="direct-ip-toggle" onchange="setDirectIpAccess(this.checked)" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
           <!-- ngrok token setup (shown when token missing) -->
           <div id="ngrok-token-setup" style="display:none" class="ngrok-token-card">
             <p style="margin:0 0 var(--sp-3);color:var(--color-text-secondary);font-size:var(--text-sm)">

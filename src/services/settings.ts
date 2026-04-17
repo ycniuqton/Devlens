@@ -4,6 +4,7 @@ import path from 'path';
 export interface DevlensSettings {
   ignorePatterns: string[];
   ngrokAuthToken?: string;
+  directIpAccess: boolean;
 }
 
 // Common heavy/noisy directories that should be ignored by default
@@ -50,7 +51,7 @@ export function createSettingsService(projectDir: string): SettingsService {
       fs.mkdirSync(devlensDir, { recursive: true });
     }
     if (!fs.existsSync(settingsFile)) {
-      const initial: DevlensSettings = { ignorePatterns: DEFAULT_IGNORE_PATTERNS };
+      const initial: DevlensSettings = { ignorePatterns: DEFAULT_IGNORE_PATTERNS, directIpAccess: true };
       fs.writeFileSync(settingsFile, JSON.stringify(initial, null, 2));
     }
   }
@@ -61,9 +62,11 @@ export function createSettingsService(projectDir: string): SettingsService {
       const data = JSON.parse(fs.readFileSync(settingsFile, 'utf-8'));
       return {
         ignorePatterns: Array.isArray(data.ignorePatterns) ? data.ignorePatterns : DEFAULT_IGNORE_PATTERNS,
+        ngrokAuthToken: data.ngrokAuthToken,
+        directIpAccess: data.directIpAccess !== false, // default true
       };
     } catch {
-      return { ignorePatterns: DEFAULT_IGNORE_PATTERNS };
+      return { ignorePatterns: DEFAULT_IGNORE_PATTERNS, directIpAccess: true };
     }
   }
 
@@ -82,6 +85,7 @@ export function createSettingsService(projectDir: string): SettingsService {
       const merged: DevlensSettings = {
         ignorePatterns: input.ignorePatterns ?? current.ignorePatterns,
         ngrokAuthToken: input.ngrokAuthToken !== undefined ? input.ngrokAuthToken : current.ngrokAuthToken,
+        directIpAccess: input.directIpAccess !== undefined ? input.directIpAccess : current.directIpAccess,
       };
       // Dedupe + trim + drop empties
       merged.ignorePatterns = Array.from(

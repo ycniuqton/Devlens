@@ -60,6 +60,18 @@ async function startTunnelAction(provider) {
 
 async function stopTunnelAction() {
   try {
+    // If currently accessing via tunnel URL, redirect to local URL first
+    const tunnelStatus = await fetch('/api/integrations/tunnel/status').then(r => r.json());
+    const onTunnel = tunnelStatus.url && window.location.href.startsWith(tunnelStatus.url);
+
+    if (onTunnel) {
+      const info = await fetch('/api/info').then(r => r.json());
+      const fallback = info.networkUrls?.[0] || info.localUrl || `http://localhost:${info.port}`;
+      await fetch('/api/integrations/tunnel/stop', { method: 'POST' });
+      window.location.href = fallback + '/integrations';
+      return;
+    }
+
     await fetch('/api/integrations/tunnel/stop', { method: 'POST' });
     updateTunnelUI({ status: 'disconnected' });
     showToast('Tunnel disconnected', 'info');
@@ -217,9 +229,32 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+async function loadDirectIpStatus() {
+  try {
+    const res = await fetch('/api/integrations/direct-ip');
+    const data = await res.json();
+    const toggle = document.getElementById('direct-ip-toggle');
+    if (toggle) toggle.checked = data.enabled;
+  } catch {}
+}
+
+async function setDirectIpAccess(enabled) {
+  try {
+    await fetch('/api/integrations/direct-ip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    showToast(enabled ? 'Direct IP access enabled' : 'Direct IP access disabled', 'info');
+  } catch {
+    showToast('Failed to update direct IP setting', 'error');
+  }
+}
+
 window.addEventListener('tab-activated', (e) => {
   if (e.detail.tab === 'integrations') {
     loadTunnelStatus();
+    loadDirectIpStatus();
     loadIntegrations();
   }
 });

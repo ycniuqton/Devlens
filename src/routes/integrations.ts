@@ -55,9 +55,30 @@ integrationsRouter.post('/tunnel/start', async (req: Request, res: Response) => 
   }
 });
 
-integrationsRouter.post('/tunnel/stop', (_req: Request, res: Response) => {
+integrationsRouter.post('/tunnel/stop', (req: Request, res: Response) => {
   stopTunnel();
+  // Always re-enable direct IP on disconnect so user is never locked out
+  const settingsService = req.app.locals.settingsService;
+  if (settingsService) settingsService.updateSettings({ directIpAccess: true });
   res.json({ ok: true });
+});
+
+integrationsRouter.get('/direct-ip', (req: Request, res: Response) => {
+  const settingsService = req.app.locals.settingsService;
+  const enabled = settingsService?.getSettings().directIpAccess !== false;
+  res.json({ enabled });
+});
+
+integrationsRouter.post('/direct-ip', (req: Request, res: Response) => {
+  try {
+    const { enabled } = req.body;
+    const settingsService = req.app.locals.settingsService;
+    if (!settingsService) return res.status(500).json({ error: 'Settings service not available' });
+    settingsService.updateSettings({ directIpAccess: !!enabled });
+    res.json({ ok: true, enabled: !!enabled });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 integrationsRouter.get('/tunnel/ngrok-token', (req: Request, res: Response) => {

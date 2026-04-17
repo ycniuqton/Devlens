@@ -39,12 +39,31 @@ export function createServer(options: ServerOptions) {
   app.locals.projectDir = options.projectDir;
   app.locals.port = options.port;
 
+  // Block non-localhost requests when directIpAccess is disabled
+  app.use((req, res, next) => {
+    const ip = req.socket.remoteAddress || '';
+    const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+    if (!isLocal && !settingsService.getSettings().directIpAccess) {
+      return res.status(403).send('Direct IP access is disabled. Use the tunnel URL.');
+    }
+    next();
+  });
+
   // API routes
   app.get('/api/info', (_req, res) => {
+    const os = require('os');
+    const networkIps: string[] = [];
+    for (const ifaces of Object.values(os.networkInterfaces() as any)) {
+      for (const iface of ifaces as any[]) {
+        if (iface.family === 'IPv4' && !iface.internal) networkIps.push(iface.address);
+      }
+    }
     res.json({
       projectDir: options.projectDir,
       projectName: path.basename(options.projectDir),
       port: options.port,
+      localUrl: `http://localhost:${options.port}`,
+      networkUrls: networkIps.map(ip => `http://${ip}:${options.port}`),
     });
   });
   app.use('/api', diffRouter);
