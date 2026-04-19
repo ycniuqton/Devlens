@@ -276,7 +276,7 @@ export function initDevlens(projectDir: string, port?: number) {
   if (!settings.hooks.PreToolUse) {
     settings.hooks.PreToolUse = [];
   }
-  const COMMIT_GUARD_CMD = `cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null); if echo "$cmd" | grep -qE '(^|&&|;|\\|\\|)\\s*(git commit|npm publish)'; then echo '{"decision":"block","reason":"⛔ Waiting for user permission before committing or publishing. Please confirm first."}'; fi`;
+  const COMMIT_GUARD_CMD = `cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null); if echo "$cmd" | grep -qE '(^|&&|;|\\|\\|)\\s*(git commit|npm publish)'; then echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"⚠️ Rule reminder: do not commit or publish without explicit user permission."},"continue":true}'; fi`;
   settings.hooks.PreToolUse = settings.hooks.PreToolUse.filter(
     (h) => !h.hooks?.some((hk) => hk.command?.includes('git commit') || hk.command?.includes('npm publish'))
   );
