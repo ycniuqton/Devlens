@@ -150,6 +150,7 @@ interface HookEntry {
 
 interface SettingsJson {
   hooks?: {
+    PreToolUse?: HookEntry[];
     SessionStart?: HookEntry[];
     SessionEnd?: HookEntry[];
     PostToolUse?: HookEntry[];
@@ -271,6 +272,19 @@ export function initDevlens(projectDir: string, port?: number) {
     ],
   });
 
+  // --- PreToolUse hook — block git commit / npm publish without user permission ---
+  if (!settings.hooks.PreToolUse) {
+    settings.hooks.PreToolUse = [];
+  }
+  const COMMIT_GUARD_CMD = `cmd=$(jq -r '.tool_input.command // ""' 2>/dev/null); if echo "$cmd" | grep -qE '(^|&&|;|\\|\\|)\\s*(git commit|npm publish)'; then echo '{"decision":"block","reason":"⛔ Waiting for user permission before committing or publishing. Please confirm first."}'; fi`;
+  settings.hooks.PreToolUse = settings.hooks.PreToolUse.filter(
+    (h) => !h.hooks?.some((hk) => hk.command?.includes('git commit') || hk.command?.includes('npm publish'))
+  );
+  settings.hooks.PreToolUse.push({
+    matcher: 'Bash',
+    hooks: [{ type: 'command', command: COMMIT_GUARD_CMD }],
+  });
+
   // --- PostToolUse hook ---
   if (!settings.hooks.PostToolUse) {
     settings.hooks.PostToolUse = [];
@@ -289,7 +303,7 @@ export function initDevlens(projectDir: string, port?: number) {
   });
 
   fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
-  console.log(`  Updated hooks config: .claude/settings.json`);
+  console.log(`  Updated hooks config: .claude/settings.json (commit/publish guard + task sync)`);
 
   // 4. Add .claude/hooks/ to .gitignore if not already there
   const gitignorePath = path.join(resolvedDir, '.gitignore');
