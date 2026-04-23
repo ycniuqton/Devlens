@@ -183,6 +183,31 @@ When you have a "no commit without approval" rule active:
 4. Devlens writes `.devlens/commit-approved.md`
 5. Claude proceeds with the commit
 
+## Authentication
+
+Devlens requires a password to access the dashboard. A login page is shown on first visit.
+
+**Default credentials:**
+
+| Username | Password |
+|----------|----------|
+| `admin` | `devlens` |
+
+> Change your password immediately after first login via the user icon in the bottom-left of the sidebar.
+
+### Change Password
+
+1. Open the dashboard and sign in
+2. Click the **user icon** (bottom-left sidebar) → **Change Password**
+3. Enter your current password and a new password (min 4 characters)
+4. Click **Update Password**
+
+Credentials are stored as a bcrypt hash in `.devlens/auth.json` (never committed — add to `.gitignore` if needed).
+
+### Session
+
+Sessions last 7 days. Closing the browser does not log you out. Click the **sign out** button (→ icon, bottom-left) to end the session.
+
 ## Configuration
 
 ### Environment Variables
@@ -207,17 +232,12 @@ In the **Integrations** tab, configure:
 
 ### Tunnel (remote access)
 
-From the Integrations tab, click **Start Tunnel** for Cloudflare or ngrok. The tunnel URL appears in the dashboard. Either binary must be installed:
+From the Integrations tab, click **Cloudflare Tunnel** or **ngrok**.
 
-```bash
-# Cloudflare
-brew install cloudflared    # macOS
-# https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+- **Cloudflare** — works out of the box, no account needed. The `cloudflared` binary is bundled with Devlens.
+- **ngrok** — requires a free account. Click the ngrok button and paste your auth token when prompted. Get your token at [dashboard.ngrok.com](https://dashboard.ngrok.com/get-started/your-authtoken).
 
-# ngrok
-brew install ngrok          # macOS
-# https://ngrok.com/download
-```
+**Direct IP Access toggle** — disable to restrict access to the tunnel URL only (re-enabled automatically on server restart so you're never locked out).
 
 ## API Reference
 
