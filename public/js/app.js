@@ -1,3 +1,55 @@
+// Auth
+fetch('/api/auth/status').then(r => r.json()).then(data => {
+  if (!data.authenticated) location.href = '/login';
+}).catch(() => {});
+
+async function logoutAction() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  location.href = '/login';
+}
+
+function showChangePassword() {
+  document.getElementById('cp-current').value = '';
+  document.getElementById('cp-new').value = '';
+  document.getElementById('cp-confirm').value = '';
+  document.getElementById('change-password-modal').style.display = 'flex';
+  document.getElementById('cp-current').focus();
+}
+
+function hideChangePassword() {
+  document.getElementById('change-password-modal').style.display = 'none';
+}
+
+async function submitChangePassword() {
+  const current = document.getElementById('cp-current').value;
+  const newPw = document.getElementById('cp-new').value;
+  const confirm = document.getElementById('cp-confirm').value;
+  if (!current || !newPw) { showToast('Please fill in all fields', 'error'); return; }
+  if (newPw !== confirm) { showToast('Passwords do not match', 'error'); return; }
+  if (newPw.length < 4) { showToast('Password must be at least 4 characters', 'error'); return; }
+  try {
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword: current, newPassword: newPw }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      hideChangePassword();
+      showToast('Password updated', 'success');
+    } else {
+      showToast(data.error || 'Failed to update password', 'error');
+    }
+  } catch {
+    showToast('Connection error', 'error');
+  }
+}
+
+// Close modal on backdrop click
+document.getElementById('change-password-modal')?.addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) hideChangePassword();
+});
+
 // Load project info into sidebar + page title
 fetch('/api/info').then(r => r.json()).then(info => {
   if (info.projectName) {

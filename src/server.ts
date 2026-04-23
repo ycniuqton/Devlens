@@ -1,6 +1,7 @@
 import express from 'express';
 import http from 'http';
 import path from 'path';
+import session from 'express-session';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ServerOptions, WsMessage } from './types';
 import chokidar from 'chokidar';
@@ -9,12 +10,14 @@ import { createWatcher } from './services/watcher';
 import { createTaskStore } from './services/taskStore';
 import { createRulesService } from './services/rules';
 import { createSettingsService } from './services/settings';
+import { createAuthService } from './services/auth';
 import { diffRouter } from './routes/diff';
 import { tasksRouter, checkSessionLiveness } from './routes/tasks';
 import { integrationsRouter } from './routes/integrations';
 import { rulesRouter } from './routes/rules';
 import { browserRouter } from './routes/browser';
 import { settingsRouter } from './routes/settings';
+import { authRouter } from './routes/auth';
 
 export function createServer(options: ServerOptions) {
   const app = express();
@@ -23,12 +26,19 @@ export function createServer(options: ServerOptions) {
 
   // Middleware
   app.use(express.json());
+  app.use(session({
+    secret: require('crypto').randomBytes(32).toString('hex'),
+    resave: false,
+    saveUninitialized: false,
+    cookie: { httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 },
+  }));
 
   // Services
   const gitService = createGitService(options.projectDir);
   const taskStore = createTaskStore(options.projectDir);
   const rulesService = createRulesService(options.projectDir);
   const settingsService = createSettingsService(options.projectDir);
+  const authService = createAuthService(options.projectDir);
   rulesService.ensureDefault();
   // Always re-enable direct IP on startup so users are never permanently locked out
   settingsService.updateSettings({ directIpAccess: true });
@@ -38,6 +48,7 @@ export function createServer(options: ServerOptions) {
   app.locals.taskStore = taskStore;
   app.locals.rulesService = rulesService;
   app.locals.settingsService = settingsService;
+  app.locals.authService = authService;
   app.locals.projectDir = options.projectDir;
   app.locals.port = options.port;
 
@@ -47,6 +58,22 @@ export function createServer(options: ServerOptions) {
     const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
     if (!isLocal && !settingsService.getSettings().directIpAccess) {
       return res.status(403).send('Direct IP access is disabled. Use the tunnel URL.');
+    }
+    next();
+  });
+
+  // Auth routes (public — no auth required)
+  app.use('/api/auth', authRouter);
+
+  // Auth guard — protect all other API routes and the SPA
+  app.use((req, res, next) => {
+    const isAuthenticated = !!(req.session as any).authenticated;
+    const isApiRequest = req.path.startsWith('/api/');
+    const isStaticAsset = req.path.startsWith('/css/') || req.path.startsWith('/js/') || req.path.startsWith('/fonts/');
+
+    if (!isAuthenticated) {
+      if (isApiRequest) return res.status(401).json({ error: 'Not authenticated' });
+      if (!isStaticAsset) return res.redirect('/login');
     }
     next();
   });
@@ -78,6 +105,11 @@ export function createServer(options: ServerOptions) {
   // Static files
   const publicDir = path.resolve(__dirname, '../public');
   app.use(express.static(publicDir));
+
+  // Login page (public)
+  app.get('/login', (_req, res) => {
+    res.sendFile(path.join(publicDir, 'login.html'));
+  });
 
   // SPA fallback
   app.get('*', (_req, res) => {
