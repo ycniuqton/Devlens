@@ -68,12 +68,11 @@ export function createServer(options: ServerOptions) {
   // Auth guard — protect all other API routes and the SPA
   app.use((req, res, next) => {
     const isAuthenticated = !!(req.session as any).authenticated;
-    const isApiRequest = req.path.startsWith('/api/');
-    const isStaticAsset = req.path.startsWith('/css/') || req.path.startsWith('/js/') || req.path.startsWith('/fonts/');
+    const isPublic = req.path === '/login' || req.path.startsWith('/css/') || req.path.startsWith('/js/') || req.path.startsWith('/fonts/');
 
-    if (!isAuthenticated) {
-      if (isApiRequest) return res.status(401).json({ error: 'Not authenticated' });
-      if (!isStaticAsset) return res.redirect('/login');
+    if (!isAuthenticated && !isPublic) {
+      if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Not authenticated' });
+      return res.redirect('/login');
     }
     next();
   });
