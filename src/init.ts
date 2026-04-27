@@ -193,6 +193,160 @@ function writeShortResponseSkills(claudeDir: string): void {
   }
 }
 
+const DOC_SKILLS: Record<string, string> = {
+  sumu: `---
+name: sumu
+description: Summarize and merge all version docs of a feature into one consolidated version, then remove old sub-versions
+---
+
+The user wants to consolidate a feature's documentation history into a single up-to-date version.
+
+## Steps
+
+1. **Identify the feature.** Use the feature name from the prompt. If not provided, list all folders under \`/docs/features/\` and ask the user to pick one.
+
+2. **Read all version folders** under \`/docs/features/<feature-name>/\`, sorted numerically ascending. Read every file inside each version.
+
+3. **Synthesize one consolidated doc set** from all versions:
+   - \`01-requirements.md\` — final, current requirements only. No history duplication. Max 100 lines.
+   - \`02-design.md\` — complete current design, absorbing all changes across versions. No line limit.
+   - \`03-plan.md\` — current execution state only (pending/in-progress steps). Max 100 lines.
+
+4. **Determine the new version folder name:**
+   - Count existing versions. If total ≤ 4 after consolidation, use next increment (e.g. \`00004\`).
+   - If consolidation produces a clean new baseline, name it \`10000-reset\` (or \`20000-reset\` if a reset already exists).
+
+5. **Write the new version folder** with the 3 consolidated files.
+
+6. **Delete all old version folders** for this feature — they are no longer needed. Keep only the new consolidated version.
+
+7. **Report** what was merged, what the new active version is, and confirm old versions were removed.
+
+## Constraints
+- Follow all Feature & System Documentation rules from \`.devlens/rules.md\`
+- Never create more than 3 files per version folder
+- Requirements and plan must stay ≤ 100 lines after consolidation — summarize if needed
+- Do not keep any CURRENT/active marker files
+`,
+  newv: `---
+name: newv
+description: Create a new version for an existing feature under /docs/features/, following versioning and line-limit rules
+---
+
+The user wants to add a new version to an existing feature's documentation.
+
+## Steps
+
+1. **Identify the feature.** Use the feature name from the prompt. If not provided, list all folders under \`/docs/features/\` and ask the user to pick one.
+
+2. **Run the pre-write checklist** (from \`.devlens/rules.md\`):
+   - Confirm feature folder exists under \`/docs/features/\`
+   - List all version folders, find the highest numeric one — that is the active version
+   - Count total versions
+
+3. **Determine the new version folder name:**
+   - If total versions < 5: use next increment (e.g. active is \`00002\` → new is \`00003\`)
+   - If total versions == 5: the next change MUST be a reset. Create \`10000-reset\` as a fully self-contained new baseline. Inform the user this is a reset version.
+
+4. **Ask the user** what changed in this version (if not already described in the prompt).
+
+5. **Write the new version folder** with only the changed content:
+   - \`01-requirements.md\` — only what changed + explicit statement of what remains unchanged. Max 100 lines.
+   - \`02-design.md\` — only design changes. No line limit.
+   - \`03-plan.md\` — updated execution steps for this version. Max 100 lines.
+   - For a reset version, all 3 files must be fully self-contained.
+
+6. **Report** the new version folder name and confirm the active version.
+
+## Constraints
+- Follow all Feature & System Documentation rules from \`.devlens/rules.md\`
+- Never create more than 3 files per version folder
+- Never skip version numbers unless user explicitly instructs
+- If any pre-write check fails, stop and ask the user
+`,
+  newf: `---
+name: newf
+description: Create a new feature documentation folder under /docs/features/ with the initial version
+---
+
+The user wants to start documentation for a new feature.
+
+## Steps
+
+1. **Identify the feature name.** Use the name from the prompt. If not provided, ask the user for:
+   - Feature name (used as the folder name, kebab-case)
+   - Brief description of the feature's business intent
+
+2. **Confirm** \`/docs/features/<feature-name>/\` does not already exist. If it does, stop and tell the user to use \`/newv\` instead.
+
+3. **Create the initial version folder:** \`/docs/features/<feature-name>/00000-init/\`
+
+4. **Write the 3 required files** based on the feature description from the prompt:
+   - \`01-requirements.md\` — business intent, functional requirements, constraints. Max 100 lines.
+   - \`02-design.md\` — initial design, architecture, flows. No line limit.
+   - \`03-plan.md\` — initial execution steps / checklist. Max 100 lines.
+   - If the user has not provided enough detail, write minimal stubs and note what needs to be filled in.
+
+5. **Report** the created path and confirm the active version is \`00000-init\`.
+
+## Constraints
+- Follow all Feature & System Documentation rules from \`.devlens/rules.md\`
+- Folder name must be kebab-case, derived from business intent (not implementation)
+- Never create more than 3 files in the version folder
+- Requirements and plan must stay ≤ 100 lines
+`,
+};
+
+function writeDocManagementSkills(claudeDir: string): void {
+  for (const [name, content] of Object.entries(DOC_SKILLS)) {
+    const dir = path.join(claudeDir, 'skills', name);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(path.join(dir, 'SKILL.md'), content);
+    console.log(`  Created skill: .claude/skills/${name} (use /${name} in Claude)`);
+  }
+}
+
+const DEFAULT_RULES = `# Devlens Rules
+
+## Commit Guard (protected)
+- Do not run git commit or git push under any circumstances. Only proceed after receiving an explicit user instruction, and clearly indicate before performing the commit.
+
+## Coding Rules
+- Rule 1: Functions ≤ 50 lines, decompose into business steps
+- Rule 2: Max 3 levels of if/else/switch nesting per function
+- Rule 3: Max 3 levels of loop nesting; no helper functions — extract into domain-based classes only
+- Rule 4: Body of any if/else/loop ≤ 15 lines
+- Rule 5: Divide logic by business/processing steps; one step = one domain method
+- Rule 6: Business logic reachable within 3 trace steps (no long forwarding chains)
+- Rule 7: Max 3 levels of class inheritance
+- Rule 8: Comments only at function/class/module top — never inside function bodies
+- Rule 9: Function docs max 3 lines, describe intent not implementation
+- Rule 10: Fix structure instead of adding inline comments
+- Rule 11: Design classes for future features, not just current requirements
+- Rule 12: Concrete implementations must not be entry points; business logic never depends on concrete classes
+- Rule 13: Every extensible domain needs a base class; all implementations inherit from it
+- Rule 14: Each extensible domain needs a Manager service; business logic talks only to Manager
+- Rule 15: Implementation selection must be configurable — no if/switch on concrete types
+- Rule 16: Prefer class-based handlers over functions
+- Rule 17: No magic strings or numbers — all values belong to a domain
+- Rule 18: Use enums or domain constant classes — no standalone constants
+- Rule 19: Always ask "what business concept does this belong to?"
+- Rule 20: Follow modern language conventions; these rules extend/override them
+- Rule 0 (override): Business requirements have absolute priority — ask user if any rule conflicts
+
+## Feature & System Documentation
+- Docs live under /docs/features/<name>/<version>/ or /docs/systems/<name>/<version>/
+- Active version = highest numeric folder (no CURRENT/active marker files)
+- First version named 00000-init; increments 00001, 00002 … max 5 versions total
+- At 6th version create 10000-reset (fully self-contained new baseline); then continue 10001, 10002 …
+- Each version folder contains ONLY: 01-requirements.md (≤100 lines), 02-design.md (no limit), 03-plan.md (≤100 lines)
+- Incremental versions write only what changed; state what is unchanged; do not copy full previous content
+- If active version cannot be understood alone, reset is required
+- Before writing docs run checklist: correct domain, correct name, active = max folder, versions ≤ 5, files ≤ 3, line limits respected
+`;
+
 // Find and kill any existing devlens server process for this project dir
 function killExistingDevlens(projectDir: string): boolean {
   try {
@@ -401,6 +555,9 @@ Just print the script output verbatim. If it starts with \`DEVLENS_NOT_RUNNING\`
   // Create /ss, /ss20, /ss30 short-response skills
   writeShortResponseSkills(claudeDir);
 
+  // Create /sumu, /newv, /newf doc management skills
+  writeDocManagementSkills(claudeDir);
+
   // 6. Append the Devlens block to CLAUDE.md (idempotent)
   const claudeMdPath = path.join(resolvedDir, 'CLAUDE.md');
   const devlensBlock = '## Devlens\nRead and follow all rules in `.devlens/rules.md` before every action.\n';
@@ -414,17 +571,14 @@ Just print the script output verbatim. If it starts with \`DEVLENS_NOT_RUNNING\`
     console.log(`  Updated CLAUDE.md with Devlens rules reference`);
   }
 
-  // 7. Create .devlens/rules.md with default rule
+  // 7. Create .devlens/rules.md with default rules
   const devlensProjectDir = path.join(resolvedDir, '.devlens');
   if (!fs.existsSync(devlensProjectDir)) {
     fs.mkdirSync(devlensProjectDir, { recursive: true });
   }
   const rulesPath = path.join(devlensProjectDir, 'rules.md');
   if (!fs.existsSync(rulesPath)) {
-    const defaultRules = `# Devlens Rules
-- Do not run git commit or git push under any circumstances. Only proceed after receiving an explicit user instruction, and clearly indicate before performing the commit.
-`;
-    fs.writeFileSync(rulesPath, defaultRules);
+    fs.writeFileSync(rulesPath, DEFAULT_RULES);
     console.log(`  Created .devlens/rules.md with default rules`);
   }
 
@@ -455,7 +609,7 @@ export function uninstallDevlens(projectDir: string) {
   const settingsFile = path.join(claudeDir, 'settings.json');
 
   // Remove skills
-  for (const skillName of ['devlens', ...SHORT_SKILLS.map((s) => s.name)]) {
+  for (const skillName of ['devlens', ...SHORT_SKILLS.map((s) => s.name), ...Object.keys(DOC_SKILLS)]) {
     const skillDir = path.join(claudeDir, 'skills', skillName);
     if (fs.existsSync(skillDir)) {
       fs.rmSync(skillDir, { recursive: true });
