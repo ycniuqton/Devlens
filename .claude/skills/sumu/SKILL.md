@@ -1,15 +1,17 @@
 ---
 name: sumu
-description: Summarize and merge all version docs of a feature into one consolidated version, then remove old sub-versions
+description: Merge all version docs of a feature or system into one consolidated version, then delete old sub-versions
 ---
 
-The user wants to consolidate a feature's documentation history into a single up-to-date version.
+The user wants to consolidate a feature or system's documentation history into a single up-to-date version.
 
 ## Steps
 
-1. **Identify the feature.** Use the feature name from the prompt. If not provided, list all folders under `/docs/features/` and ask the user to pick one.
+1. **Identify the domain and name.** Use the name from the prompt.
+   - If domain not specified, ask: `/docs/features/` or `/docs/systems/`?
+   - If name not provided, list all folders under the domain and ask the user to pick one.
 
-2. **Read all version folders** under `/docs/features/<feature-name>/`, sorted numerically ascending. Read every file inside each version.
+2. **Read all version folders** under the chosen path, sorted numerically ascending. Read every file inside each version.
 
 3. **Synthesize one consolidated doc set** from all versions:
    - `01-requirements.md` — final, current requirements only. No history duplication. Max 100 lines.
@@ -17,14 +19,20 @@ The user wants to consolidate a feature's documentation history into a single up
    - `03-plan.md` — current execution state only (pending/in-progress steps). Max 100 lines.
 
 4. **Determine the new version folder name:**
-   - Count existing versions. If total ≤ 4 after consolidation, use next increment (e.g. `00004`).
-   - If consolidation produces a clean new baseline, name it `10000-reset` (or `20000-reset` if a reset already exists).
+   - Find the highest numeric version folder name
+   - New version = highest + 1 (zero-padded to 5 digits, e.g. `00004` → `00005`)
 
-5. **Write the new version folder** with the 3 consolidated files.
+5. **Print the list of folders that will be deleted**, e.g.:
+   ```
+   Deleting: 00000-init, 00001, 00002, 00003, 00004
+   Creating: 00005
+   ```
 
-6. **Delete all old version folders** for this feature — they are no longer needed. Keep only the new consolidated version.
+6. **Write the new version folder** with the 3 consolidated files.
 
-7. **Report** what was merged, what the new active version is, and confirm old versions were removed.
+7. **Delete all old version folders** — no confirmation needed, just proceed.
+
+8. **Report** the new active version and confirm old versions were removed.
 
 ## Constraints
 - Follow all Feature & System Documentation rules from `.devlens/rules.md`

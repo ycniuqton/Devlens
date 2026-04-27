@@ -1,22 +1,25 @@
 ---
 name: newv
-description: Create a new version for an existing feature under /docs/features/, following versioning and line-limit rules
+description: Create a new version for an existing feature or system under /docs/features/ or /docs/systems/, following versioning and line-limit rules
 ---
 
-The user wants to add a new version to an existing feature's documentation.
+The user wants to add a new version to an existing feature or system's documentation.
 
 ## Steps
 
-1. **Identify the feature.** Use the feature name from the prompt. If not provided, list all folders under `/docs/features/` and ask the user to pick one.
+1. **Identify the domain and name.** Use the name from the prompt.
+   - If domain not specified, check both `/docs/features/` and `/docs/systems/` — if found in one, use it. If ambiguous, ask the user.
+   - If name not provided, list all folders under both domains and ask the user to pick one.
 
 2. **Run the pre-write checklist** (from `.devlens/rules.md`):
-   - Confirm feature folder exists under `/docs/features/`
+   - Confirm the folder exists under the correct domain
    - List all version folders, find the highest numeric one — that is the active version
    - Count total versions
+   - If any check fails → stop and ask the user before proceeding
 
 3. **Determine the new version folder name:**
-   - If total versions < 5: use next increment (e.g. active is `00002` → new is `00003`)
-   - If total versions == 5: the next change MUST be a `reset`. Create `10000-reset` as a fully self-contained new baseline. Inform the user this is a reset version.
+   - If total versions < 5: next increment (e.g. active is `00002` → new is `00003`)
+   - If total versions == 5: the next change MUST be a reset. Create `10000-reset` as a fully self-contained new baseline. Inform the user this is a reset version.
 
 4. **Ask the user** what changed in this version (if not already described in the prompt).
 

@@ -196,16 +196,18 @@ function writeShortResponseSkills(claudeDir: string): void {
 const DOC_SKILLS: Record<string, string> = {
   sumu: `---
 name: sumu
-description: Summarize and merge all version docs of a feature into one consolidated version, then remove old sub-versions
+description: Merge all version docs of a feature or system into one consolidated version, then delete old sub-versions
 ---
 
-The user wants to consolidate a feature's documentation history into a single up-to-date version.
+The user wants to consolidate a feature or system's documentation history into a single up-to-date version.
 
 ## Steps
 
-1. **Identify the feature.** Use the feature name from the prompt. If not provided, list all folders under \`/docs/features/\` and ask the user to pick one.
+1. **Identify the domain and name.** Use the name from the prompt.
+   - If domain not specified, ask: \`/docs/features/\` or \`/docs/systems/\`?
+   - If name not provided, list all folders under the domain and ask the user to pick one.
 
-2. **Read all version folders** under \`/docs/features/<feature-name>/\`, sorted numerically ascending. Read every file inside each version.
+2. **Read all version folders** under the chosen path, sorted numerically ascending. Read every file inside each version.
 
 3. **Synthesize one consolidated doc set** from all versions:
    - \`01-requirements.md\` — final, current requirements only. No history duplication. Max 100 lines.
@@ -213,14 +215,20 @@ The user wants to consolidate a feature's documentation history into a single up
    - \`03-plan.md\` — current execution state only (pending/in-progress steps). Max 100 lines.
 
 4. **Determine the new version folder name:**
-   - Count existing versions. If total ≤ 4 after consolidation, use next increment (e.g. \`00004\`).
-   - If consolidation produces a clean new baseline, name it \`10000-reset\` (or \`20000-reset\` if a reset already exists).
+   - Find the highest numeric version folder name
+   - New version = highest + 1 (zero-padded to 5 digits, e.g. \`00004\` → \`00005\`)
 
-5. **Write the new version folder** with the 3 consolidated files.
+5. **Print the list of folders that will be deleted**, e.g.:
+   \`\`\`
+   Deleting: 00000-init, 00001, 00002, 00003, 00004
+   Creating: 00005
+   \`\`\`
 
-6. **Delete all old version folders** for this feature — they are no longer needed. Keep only the new consolidated version.
+6. **Write the new version folder** with the 3 consolidated files.
 
-7. **Report** what was merged, what the new active version is, and confirm old versions were removed.
+7. **Delete all old version folders** — no confirmation needed, just proceed.
+
+8. **Report** the new active version and confirm old versions were removed.
 
 ## Constraints
 - Follow all Feature & System Documentation rules from \`.devlens/rules.md\`
@@ -230,22 +238,25 @@ The user wants to consolidate a feature's documentation history into a single up
 `,
   newv: `---
 name: newv
-description: Create a new version for an existing feature under /docs/features/, following versioning and line-limit rules
+description: Create a new version for an existing feature or system under /docs/features/ or /docs/systems/, following versioning and line-limit rules
 ---
 
-The user wants to add a new version to an existing feature's documentation.
+The user wants to add a new version to an existing feature or system's documentation.
 
 ## Steps
 
-1. **Identify the feature.** Use the feature name from the prompt. If not provided, list all folders under \`/docs/features/\` and ask the user to pick one.
+1. **Identify the domain and name.** Use the name from the prompt.
+   - If domain not specified, check both \`/docs/features/\` and \`/docs/systems/\` — if found in one, use it. If ambiguous, ask the user.
+   - If name not provided, list all folders under both domains and ask the user to pick one.
 
 2. **Run the pre-write checklist** (from \`.devlens/rules.md\`):
-   - Confirm feature folder exists under \`/docs/features/\`
+   - Confirm the folder exists under the correct domain
    - List all version folders, find the highest numeric one — that is the active version
    - Count total versions
+   - If any check fails → stop and ask the user before proceeding
 
 3. **Determine the new version folder name:**
-   - If total versions < 5: use next increment (e.g. active is \`00002\` → new is \`00003\`)
+   - If total versions < 5: next increment (e.g. active is \`00002\` → new is \`00003\`)
    - If total versions == 5: the next change MUST be a reset. Create \`10000-reset\` as a fully self-contained new baseline. Inform the user this is a reset version.
 
 4. **Ask the user** what changed in this version (if not already described in the prompt).
@@ -266,22 +277,22 @@ The user wants to add a new version to an existing feature's documentation.
 `,
   newf: `---
 name: newf
-description: Create a new feature documentation folder under /docs/features/ with the initial version
+description: Create a new feature or system documentation folder under /docs/features/ or /docs/systems/ with the initial version
 ---
 
-The user wants to start documentation for a new feature.
+The user wants to start documentation for a new feature or system.
 
 ## Steps
 
-1. **Identify the feature name.** Use the name from the prompt. If not provided, ask the user for:
-   - Feature name (used as the folder name, kebab-case)
-   - Brief description of the feature's business intent
+1. **Identify the domain and name.** Use the name from the prompt.
+   - If domain not specified, ask: is this a feature (\`/docs/features/\`) or a system (\`/docs/systems/\`)?
+   - Feature name used as the folder name (kebab-case, derived from business intent)
 
-2. **Confirm** \`/docs/features/<feature-name>/\` does not already exist. If it does, stop and tell the user to use \`/newv\` instead.
+2. **Confirm** the folder does not already exist under the chosen domain. If it does, stop and tell the user to use \`/newv\` instead.
 
-3. **Create the initial version folder:** \`/docs/features/<feature-name>/00000-init/\`
+3. **Create the initial version folder:** \`<domain>/<feature-name>/00000-init/\`
 
-4. **Write the 3 required files** based on the feature description from the prompt:
+4. **Write the 3 required files** based on the description from the prompt:
    - \`01-requirements.md\` — business intent, functional requirements, constraints. Max 100 lines.
    - \`02-design.md\` — initial design, architecture, flows. No line limit.
    - \`03-plan.md\` — initial execution steps / checklist. Max 100 lines.
@@ -294,6 +305,7 @@ The user wants to start documentation for a new feature.
 - Folder name must be kebab-case, derived from business intent (not implementation)
 - Never create more than 3 files in the version folder
 - Requirements and plan must stay ≤ 100 lines
+- If any check fails → stop and ask the user before proceeding
 `,
 };
 
@@ -344,7 +356,7 @@ const DEFAULT_RULES = `# Devlens Rules
 - Each version folder contains ONLY: 01-requirements.md (≤100 lines), 02-design.md (no limit), 03-plan.md (≤100 lines)
 - Incremental versions write only what changed; state what is unchanged; do not copy full previous content
 - If active version cannot be understood alone, reset is required
-- Before writing docs run checklist: correct domain, correct name, active = max folder, versions ≤ 5, files ≤ 3, line limits respected
+- Before writing docs run checklist: correct domain, correct name, active = max folder, versions ≤ 5, files ≤ 3, line limits respected — if any check fails → stop and ask the user before proceeding
 `;
 
 // Find and kill any existing devlens server process for this project dir
