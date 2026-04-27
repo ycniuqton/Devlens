@@ -1,6 +1,6 @@
 {
   "name": "@ycniuqton/devlens",
-  "version": "0.1.16",
+  "version": "0.1.22",
   "publishConfig": {
     "access": "public"
   },
