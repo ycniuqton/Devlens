@@ -7,9 +7,11 @@ The user wants to consolidate a feature or system's documentation history into a
 
 ## Steps
 
-1. **Identify the domain and name.** Use the name from the prompt.
-   - If domain not specified, ask: `/docs/features/` or `/docs/systems/`?
-   - If name not provided, list all folders under the domain and ask the user to pick one.
+1. **Identify the domain and feature.** 
+   - Scan `/docs/features/` and `/docs/systems/` and list what exists.
+   - Cross-reference with the current conversation context to infer which feature is being discussed.
+   - Only ask the user if 2 or more candidates are equally likely.
+   - If domain is still unclear, ask: `/docs/features/` or `/docs/systems/`?
 
 2. **Read all version folders** under the chosen path, sorted numerically ascending. Read every file inside each version.
 

@@ -7,9 +7,10 @@ The user wants to add a new version to an existing feature or system's documenta
 
 ## Steps
 
-1. **Identify the domain and name.** Use the name from the prompt.
-   - If domain not specified, check both `/docs/features/` and `/docs/systems/` — if found in one, use it. If ambiguous, ask the user.
-   - If name not provided, list all folders under both domains and ask the user to pick one.
+1. **Identify the domain and feature.**
+   - Scan `/docs/features/` and `/docs/systems/` and list what exists.
+   - Cross-reference with the current conversation context to infer which feature is being discussed.
+   - Only ask the user if 2 or more candidates are equally likely.
 
 2. **Run the pre-write checklist** (from `.devlens/rules.md`):
    - Confirm the folder exists under the correct domain
