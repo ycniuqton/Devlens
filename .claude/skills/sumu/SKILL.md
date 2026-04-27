@@ -21,6 +21,7 @@ The user wants to consolidate a feature or system's documentation history into a
 4. **Determine the new version folder name:**
    - Find the highest numeric version folder name
    - New version = highest + 1 (zero-padded to 5 digits, e.g. `00004` → `00005`)
+   - Always use a plain numeric name — no reset naming, no special suffix, no cycle tracking
 
 5. **Print the list of folders that will be deleted**, e.g.:
    ```
@@ -39,3 +40,4 @@ The user wants to consolidate a feature or system's documentation history into a
 - Never create more than 3 files per version folder
 - Requirements and plan must stay ≤ 100 lines after consolidation — summarize if needed
 - Do not keep any CURRENT/active marker files
+- After sumu, version count resets to 1 — the new folder is the only version remaining
