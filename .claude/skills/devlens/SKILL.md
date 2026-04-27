@@ -10,7 +10,6 @@ DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 PROC=$(ps -eo pid,args 2>/dev/null | grep -E "node.*(devlens|dist/index\.js).*start.*--dir[= ]?${DIR}([ /]|$)" | grep -v grep | head -1)
 
 if [ -z "$PROC" ]; then
-  # Not running — try to start it
   PORT=$(grep -oE '"port"[[:space:]]*:[[:space:]]*[0-9]+' "${DIR}/.devlens/runtime.json" 2>/dev/null | grep -oE "[0-9]+" | head -1)
   BIN=""
   command -v devlens &>/dev/null && BIN="devlens"
