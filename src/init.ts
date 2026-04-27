@@ -158,6 +158,41 @@ interface SettingsJson {
   [key: string]: any;
 }
 
+interface ShortSkillDef {
+  name: string;
+  lines: number;
+}
+
+const SHORT_SKILLS: ShortSkillDef[] = [
+  { name: 'ss', lines: 50 },
+  { name: 'ss20', lines: 20 },
+  { name: 'ss30', lines: 30 },
+];
+
+function shortSkillContent(name: string, lines: number): string {
+  return `---
+name: ${name}
+description: Short response mode — answer/explain only, no code, output ≤ ${lines} lines
+---
+
+This prompt uses /${name} short-response mode. Follow these constraints for your entire reply:
+- Answer or explain only — do not write, generate, or suggest any code
+- Output must be ≤ ${lines} lines total
+- Be concise and direct; omit preamble and trailing summaries
+`;
+}
+
+function writeShortResponseSkills(claudeDir: string): void {
+  for (const skill of SHORT_SKILLS) {
+    const dir = path.join(claudeDir, 'skills', skill.name);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(path.join(dir, 'SKILL.md'), shortSkillContent(skill.name, skill.lines));
+    console.log(`  Created skill: .claude/skills/${skill.name} (use /${skill.name} in Claude)`);
+  }
+}
+
 // Find and kill any existing devlens server process for this project dir
 function killExistingDevlens(projectDir: string): boolean {
   try {
@@ -363,6 +398,9 @@ Just print the script output verbatim. If it starts with \`DEVLENS_NOT_RUNNING\`
   fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillContent);
   console.log(`  Created skill: .claude/skills/devlens (use /devlens in Claude)`);
 
+  // Create /ss, /ss20, /ss30 short-response skills
+  writeShortResponseSkills(claudeDir);
+
   // 6. Append the Devlens block to CLAUDE.md (idempotent)
   const claudeMdPath = path.join(resolvedDir, 'CLAUDE.md');
   const devlensBlock = '## Devlens\nRead and follow all rules in `.devlens/rules.md` before every action.\n';
@@ -416,11 +454,13 @@ export function uninstallDevlens(projectDir: string) {
   const hooksDir = path.join(claudeDir, 'hooks');
   const settingsFile = path.join(claudeDir, 'settings.json');
 
-  // Remove skill
-  const skillDir = path.join(claudeDir, 'skills', 'devlens');
-  if (fs.existsSync(skillDir)) {
-    fs.rmSync(skillDir, { recursive: true });
-    console.log(`  Removed: .claude/skills/devlens`);
+  // Remove skills
+  for (const skillName of ['devlens', ...SHORT_SKILLS.map((s) => s.name)]) {
+    const skillDir = path.join(claudeDir, 'skills', skillName);
+    if (fs.existsSync(skillDir)) {
+      fs.rmSync(skillDir, { recursive: true });
+      console.log(`  Removed: .claude/skills/${skillName}`);
+    }
   }
 
   for (const script of ['devlens-sync.sh', 'devlens-startup.sh', 'devlens-shutdown.sh']) {
