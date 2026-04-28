@@ -262,7 +262,7 @@ The user wants to add a new version to an existing feature or system's documenta
 
 3. **Determine the new version folder name:**
    - If total versions < 5: next increment (e.g. active is \`00002\` → new is \`00003\`)
-   - If total versions == 5: the next change MUST be a reset. Create \`10000-reset\` as a fully self-contained new baseline. Inform the user this is a reset version.
+   - If total versions == 5: do not add another version. Tell the user to run \`/sumu\` first to consolidate, then \`/newv\` again.
 
 4. **Ask the user** what changed in this version (if not already described in the prompt).
 
@@ -366,7 +366,7 @@ const DEFAULT_RULES = `# Devlens Rules
 - Docs live under /docs/features/<name>/<version>/ or /docs/systems/<name>/<version>/
 - Active version = highest numeric folder (no CURRENT/active marker files)
 - First version named 00000-init; increments 00001, 00002 … max 5 versions total
-- At 6th version create 10000-reset (fully self-contained new baseline); then continue 10001, 10002 …
+- At 5 versions, run /sumu to consolidate all into one new version (next plain increment) and delete old ones — count resets to 1
 - Each version folder contains ONLY: 01-requirements.md (≤100 lines), 02-design.md (no limit), 03-plan.md (≤100 lines)
 - Incremental versions write only what changed; state what is unchanged; do not copy full previous content
 - If active version cannot be understood alone, reset is required

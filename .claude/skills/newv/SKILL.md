@@ -20,7 +20,7 @@ The user wants to add a new version to an existing feature or system's documenta
 
 3. **Determine the new version folder name:**
    - If total versions < 5: next increment (e.g. active is `00002` → new is `00003`)
-   - If total versions == 5: the next change MUST be a reset. Create `10000-reset` as a fully self-contained new baseline. Inform the user this is a reset version.
+   - If total versions == 5: do not add another version. Tell the user to run `/sumu` first to consolidate, then `/newv` again.
 
 4. **Ask the user** what changed in this version (if not already described in the prompt).
 
