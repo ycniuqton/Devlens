@@ -34,7 +34,7 @@ program
       tunnel: opts.tunnel || false,
     };
 
-    const { httpServer } = createServer(options);
+    const { httpServer } = await createServer(options);
 
     httpServer.listen(options.port, '0.0.0.0', () => {
       const url = `http://localhost:${options.port}`;

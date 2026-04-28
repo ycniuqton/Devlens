@@ -1,10 +1,10 @@
-import Database from 'better-sqlite3';
+import initSqlJs from 'sql.js';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { Task, CreateTaskInput, UpdateTaskInput } from '../types';
 
-const ARCHIVE_AFTER_MS = 60 * 60 * 1000; // 1 hour
+const ARCHIVE_AFTER_MS = 60 * 60 * 1000;
 
 export interface SessionInfo {
   sessionId: string;
@@ -28,94 +28,80 @@ export interface TaskStoreService {
   updateSessionStatus(sessionId: string, status: 'active' | 'ended'): void;
 }
 
-export function createTaskStore(projectDir: string): TaskStoreService {
+const SCHEMA = `
+  CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    status TEXT DEFAULT 'pending',
+    priority TEXT DEFAULT 'medium',
+    tags TEXT DEFAULT '[]',
+    dependencies TEXT DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    source TEXT DEFAULT 'local',
+    claude_session_id TEXT,
+    claude_task_id TEXT,
+    active_form TEXT,
+    owner TEXT,
+    metadata TEXT,
+    context TEXT,
+    completion_context TEXT
+  );
+  CREATE TABLE IF NOT EXISTS sessions (
+    session_id TEXT PRIMARY KEY,
+    name TEXT,
+    cwd TEXT,
+    pid INTEGER,
+    started_at TEXT,
+    last_seen_at TEXT,
+    status TEXT DEFAULT 'active',
+    task_count INTEGER DEFAULT 0
+  );
+`;
+
+export async function createTaskStore(projectDir: string): Promise<TaskStoreService> {
   const devlensDir = path.join(projectDir, '.devlens');
   if (!fs.existsSync(devlensDir)) {
     fs.mkdirSync(devlensDir, { recursive: true });
   }
 
   const dbPath = path.join(devlensDir, 'devlens.db');
-  const db = new Database(dbPath);
+  const sqlJsDistDir = path.dirname(require.resolve('sql.js/dist/sql-wasm.js'));
+  const SQL = await initSqlJs({ locateFile: (f: string) => path.join(sqlJsDistDir, f) });
+  const db = fs.existsSync(dbPath)
+    ? new SQL.Database(fs.readFileSync(dbPath))
+    : new SQL.Database();
 
-  // Enable WAL mode for better concurrent read performance
-  db.pragma('journal_mode = WAL');
+  const persist = () => fs.writeFileSync(dbPath, Buffer.from(db.export()));
 
-  // Create tables
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      description TEXT DEFAULT '',
-      status TEXT DEFAULT 'pending',
-      priority TEXT DEFAULT 'medium',
-      tags TEXT DEFAULT '[]',
-      dependencies TEXT DEFAULT '[]',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      completed_at TEXT,
-      source TEXT DEFAULT 'local',
-      claude_session_id TEXT,
-      claude_task_id TEXT,
-      active_form TEXT,
-      owner TEXT,
-      metadata TEXT,
-      context TEXT,
-      completion_context TEXT
-    )
-  `);
+  db.exec(SCHEMA);
+  try { db.run('ALTER TABLE tasks ADD COLUMN completion_context TEXT'); } catch {}
+  persist();
 
-  // Migration: add column if missing (for existing DBs)
-  try { db.exec('ALTER TABLE tasks ADD COLUMN completion_context TEXT'); } catch {}
+  function all(sql: string, params?: Record<string, any>): any[] {
+    const stmt = db.prepare(sql);
+    const rows: any[] = [];
+    if (params) stmt.bind(params);
+    while (stmt.step()) rows.push(stmt.getAsObject());
+    stmt.free();
+    return rows;
+  }
 
+  function first(sql: string, params?: Record<string, any>): any | undefined {
+    const stmt = db.prepare(sql);
+    if (params) stmt.bind(params);
+    const row = stmt.step() ? stmt.getAsObject() : undefined;
+    stmt.free();
+    return row;
+  }
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS sessions (
-      session_id TEXT PRIMARY KEY,
-      name TEXT,
-      cwd TEXT,
-      pid INTEGER,
-      started_at TEXT,
-      last_seen_at TEXT,
-      status TEXT DEFAULT 'active',
-      task_count INTEGER DEFAULT 0
-    )
-  `);
-
-  // Prepared statements — tasks
-  const insertStmt = db.prepare(`
-    INSERT INTO tasks (id, title, description, status, priority, tags, dependencies, created_at, updated_at, source)
-    VALUES (@id, @title, @description, @status, @priority, @tags, @dependencies, @created_at, @updated_at, @source)
-  `);
-
-  const selectAllStmt = db.prepare('SELECT * FROM tasks ORDER BY created_at DESC');
-  const selectByStatusStmt = db.prepare('SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC');
-  const selectBySessionStmt = db.prepare('SELECT * FROM tasks WHERE claude_session_id = ? ORDER BY created_at DESC');
-  const selectByStatusAndSessionStmt = db.prepare('SELECT * FROM tasks WHERE status = ? AND claude_session_id = ? ORDER BY created_at DESC');
-  const selectByIdStmt = db.prepare('SELECT * FROM tasks WHERE id = ?');
-  const deleteStmt = db.prepare('DELETE FROM tasks WHERE id = ?');
-
-  // Prepared statements — sessions
-  const upsertSessionStmt = db.prepare(`
-    INSERT INTO sessions (session_id, name, cwd, pid, started_at, last_seen_at, status, task_count)
-    VALUES (@session_id, @name, @cwd, @pid, @started_at, @last_seen_at, @status, @task_count)
-    ON CONFLICT(session_id) DO UPDATE SET
-      name = COALESCE(@name, sessions.name),
-      cwd = COALESCE(@cwd, sessions.cwd),
-      pid = COALESCE(@pid, sessions.pid),
-      started_at = COALESCE(@started_at, sessions.started_at),
-      last_seen_at = @last_seen_at,
-      status = @status,
-      task_count = (SELECT COUNT(*) FROM tasks WHERE claude_session_id = @session_id)
-  `);
-  const selectAllSessionsStmt = db.prepare('SELECT * FROM sessions ORDER BY last_seen_at DESC');
-  const updateSessionStatusStmt = db.prepare('UPDATE sessions SET status = ?, last_seen_at = ? WHERE session_id = ?');
-
-  // Auto-archive completed tasks older than 1 hour
-  const archiveStmt = db.prepare(`
-    UPDATE tasks SET status = 'archived', updated_at = ?
-    WHERE status = 'completed' AND completed_at IS NOT NULL
-    AND (julianday(?) - julianday(completed_at)) * 86400000 > ?
-  `);
+  function run(sql: string, params?: Record<string, any>): void {
+    const stmt = db.prepare(sql);
+    stmt.run(params || {});
+    stmt.free();
+  }
 
   function rowToTask(row: any): Task {
     return {
@@ -140,112 +126,109 @@ export function createTaskStore(projectDir: string): TaskStoreService {
     };
   }
 
+  function buildUpdate(id: string, input: Record<string, any>): { sets: string[]; params: Record<string, any> } {
+    const sets: string[] = [];
+    const params: Record<string, any> = { '@id': id };
+    const field = (col: string, val: any) => { sets.push(`${col} = @${col}`); params[`@${col}`] = val; };
+
+    if (input.title !== undefined) field('title', input.title);
+    if (input.description !== undefined) field('description', input.description);
+    if (input.status !== undefined) field('status', input.status);
+    if (input.priority !== undefined) field('priority', input.priority);
+    if (input.tags !== undefined) field('tags', JSON.stringify(input.tags));
+    if (input.dependencies !== undefined) field('dependencies', JSON.stringify(input.dependencies));
+    if (input.claudeSessionId !== undefined) field('claude_session_id', input.claudeSessionId);
+    if (input.claudeTaskId !== undefined) field('claude_task_id', input.claudeTaskId);
+    if (input.activeForm !== undefined) field('active_form', input.activeForm);
+    if (input.owner !== undefined) field('owner', input.owner);
+    if (input.metadata !== undefined) field('metadata', JSON.stringify(input.metadata));
+    if (input.context !== undefined) field('context', input.context);
+    if (input.completionContext !== undefined) field('completion_context', input.completionContext);
+    field('updated_at', new Date().toISOString());
+
+    return { sets, params };
+  }
+
   return {
     async getTasks(filter?) {
-      // Auto-archive old completed tasks
       const now = new Date().toISOString();
-      archiveStmt.run(now, now, ARCHIVE_AFTER_MS);
-
-      let rows;
+      run(
+        `UPDATE tasks SET status = 'archived', updated_at = @now
+         WHERE status = 'completed' AND completed_at IS NOT NULL
+         AND (julianday(@now) - julianday(completed_at)) * 86400000 > @ms`,
+        { '@now': now, '@ms': ARCHIVE_AFTER_MS }
+      );
       if (filter?.status && filter?.sessionId) {
-        rows = selectByStatusAndSessionStmt.all(filter.status, filter.sessionId);
-      } else if (filter?.sessionId) {
-        rows = selectBySessionStmt.all(filter.sessionId);
-      } else if (filter?.status) {
-        rows = selectByStatusStmt.all(filter.status);
-      } else {
-        rows = selectAllStmt.all();
+        return all('SELECT * FROM tasks WHERE status = @s AND claude_session_id = @sid ORDER BY created_at DESC', { '@s': filter.status, '@sid': filter.sessionId }).map(rowToTask);
       }
-      return rows.map(rowToTask);
+      if (filter?.sessionId) {
+        return all('SELECT * FROM tasks WHERE claude_session_id = @sid ORDER BY created_at DESC', { '@sid': filter.sessionId }).map(rowToTask);
+      }
+      if (filter?.status) {
+        return all('SELECT * FROM tasks WHERE status = @s ORDER BY created_at DESC', { '@s': filter.status }).map(rowToTask);
+      }
+      return all('SELECT * FROM tasks ORDER BY created_at DESC').map(rowToTask);
     },
 
     async getTask(id) {
-      const row = selectByIdStmt.get(id);
+      const row = first('SELECT * FROM tasks WHERE id = @id', { '@id': id });
       return row ? rowToTask(row) : null;
     },
 
     async createTask(input) {
       const now = new Date().toISOString();
       const id = crypto.randomUUID();
-
-      insertStmt.run({
-        id,
-        title: input.title,
-        description: input.description || '',
-        status: input.status || 'pending',
-        priority: input.priority || 'medium',
-        tags: JSON.stringify(input.tags || []),
-        dependencies: JSON.stringify(input.dependencies || []),
-        created_at: now,
-        updated_at: now,
-        source: 'local',
-      });
-
-      return rowToTask(selectByIdStmt.get(id));
+      run(
+        `INSERT INTO tasks (id, title, description, status, priority, tags, dependencies, created_at, updated_at, source)
+         VALUES (@id, @title, @desc, @status, @priority, @tags, @deps, @now, @now, @source)`,
+        { '@id': id, '@title': input.title, '@desc': input.description || '', '@status': input.status || 'pending', '@priority': input.priority || 'medium', '@tags': JSON.stringify(input.tags || []), '@deps': JSON.stringify(input.dependencies || []), '@now': now, '@source': 'local' }
+      );
+      persist();
+      return rowToTask(first('SELECT * FROM tasks WHERE id = @id', { '@id': id })!);
     },
 
     async updateTask(id, input) {
-      const existing = selectByIdStmt.get(id) as any;
+      const existing = first('SELECT * FROM tasks WHERE id = @id', { '@id': id });
       if (!existing) throw new Error('Task not found');
 
-      const updates: string[] = [];
-      const values: any = { id };
-
-      if (input.title !== undefined) { updates.push('title = @title'); values.title = input.title; }
-      if (input.description !== undefined) { updates.push('description = @description'); values.description = input.description; }
-      if (input.status !== undefined) {
-        updates.push('status = @status');
-        values.status = input.status;
-        // Track completion time
-        if (input.status === 'completed' && existing.status !== 'completed') {
-          updates.push('completed_at = @completed_at');
-          values.completed_at = new Date().toISOString();
-        }
-      }
-      if (input.priority !== undefined) { updates.push('priority = @priority'); values.priority = input.priority; }
-      if (input.tags !== undefined) { updates.push('tags = @tags'); values.tags = JSON.stringify(input.tags); }
-      if (input.dependencies !== undefined) { updates.push('dependencies = @dependencies'); values.dependencies = JSON.stringify(input.dependencies); }
-
-      // Claude-specific fields
-      if ((input as any).claudeSessionId !== undefined) { updates.push('claude_session_id = @claude_session_id'); values.claude_session_id = (input as any).claudeSessionId; }
-      if ((input as any).claudeTaskId !== undefined) { updates.push('claude_task_id = @claude_task_id'); values.claude_task_id = (input as any).claudeTaskId; }
-      if ((input as any).activeForm !== undefined) { updates.push('active_form = @active_form'); values.active_form = (input as any).activeForm; }
-      if ((input as any).owner !== undefined) { updates.push('owner = @owner'); values.owner = (input as any).owner; }
-      if ((input as any).metadata !== undefined) { updates.push('metadata = @metadata'); values.metadata = JSON.stringify((input as any).metadata); }
-      if ((input as any).context !== undefined) { updates.push('context = @context'); values.context = (input as any).context; }
-      if ((input as any).completionContext !== undefined) { updates.push('completion_context = @completion_context'); values.completion_context = (input as any).completionContext; }
-
-      updates.push('updated_at = @updated_at');
-      values.updated_at = new Date().toISOString();
-
-      if (updates.length > 1) {
-        db.prepare(`UPDATE tasks SET ${updates.join(', ')} WHERE id = @id`).run(values);
+      const { sets, params } = buildUpdate(id, input);
+      if (input.status === 'completed' && existing.status !== 'completed') {
+        sets.splice(sets.indexOf('updated_at = @updated_at'), 0, 'completed_at = @completed_at');
+        params['@completed_at'] = new Date().toISOString();
       }
 
-      return rowToTask(selectByIdStmt.get(id));
+      if (sets.length > 1) {
+        run(`UPDATE tasks SET ${sets.join(', ')} WHERE id = @id`, params);
+        persist();
+      }
+      return rowToTask(first('SELECT * FROM tasks WHERE id = @id', { '@id': id })!);
     },
 
     async deleteTask(id) {
-      deleteStmt.run(id);
+      run('DELETE FROM tasks WHERE id = @id', { '@id': id });
+      persist();
     },
 
     upsertSession(info) {
       const now = new Date().toISOString();
-      upsertSessionStmt.run({
-        session_id: info.sessionId,
-        name: info.name || null,
-        cwd: info.cwd || null,
-        pid: info.pid || null,
-        started_at: info.startedAt || null,
-        last_seen_at: now,
-        status: info.status || 'active',
-        task_count: 0,
-      });
+      run(
+        `INSERT INTO sessions (session_id, name, cwd, pid, started_at, last_seen_at, status, task_count)
+         VALUES (@session_id, @name, @cwd, @pid, @started_at, @last_seen_at, @status, 0)
+         ON CONFLICT(session_id) DO UPDATE SET
+           name = COALESCE(@name, sessions.name),
+           cwd = COALESCE(@cwd, sessions.cwd),
+           pid = COALESCE(@pid, sessions.pid),
+           started_at = COALESCE(@started_at, sessions.started_at),
+           last_seen_at = @last_seen_at,
+           status = @status,
+           task_count = (SELECT COUNT(*) FROM tasks WHERE claude_session_id = @session_id)`,
+        { '@session_id': info.sessionId, '@name': info.name || null, '@cwd': info.cwd || null, '@pid': info.pid || null, '@started_at': info.startedAt || null, '@last_seen_at': now, '@status': info.status || 'active' }
+      );
+      persist();
     },
 
     getSessions() {
-      const rows = selectAllSessionsStmt.all() as any[];
-      return rows.map(r => ({
+      return all('SELECT * FROM sessions ORDER BY last_seen_at DESC').map(r => ({
         sessionId: r.session_id,
         name: r.name || undefined,
         cwd: r.cwd || undefined,
@@ -258,7 +241,8 @@ export function createTaskStore(projectDir: string): TaskStoreService {
     },
 
     updateSessionStatus(sessionId, status) {
-      updateSessionStatusStmt.run(status, new Date().toISOString(), sessionId);
+      run('UPDATE sessions SET status = @status, last_seen_at = @now WHERE session_id = @id', { '@status': status, '@now': new Date().toISOString(), '@id': sessionId });
+      persist();
     },
   };
 }

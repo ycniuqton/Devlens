@@ -19,7 +19,7 @@ import { browserRouter } from './routes/browser';
 import { settingsRouter } from './routes/settings';
 import { authRouter } from './routes/auth';
 
-export function createServer(options: ServerOptions) {
+export async function createServer(options: ServerOptions) {
   const app = express();
   const httpServer = http.createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
@@ -35,7 +35,7 @@ export function createServer(options: ServerOptions) {
 
   // Services
   const gitService = createGitService(options.projectDir);
-  const taskStore = createTaskStore(options.projectDir);
+  const taskStore = await createTaskStore(options.projectDir);
   const rulesService = createRulesService(options.projectDir);
   const settingsService = createSettingsService(options.projectDir);
   const authService = createAuthService(options.projectDir);
