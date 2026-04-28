@@ -614,7 +614,7 @@ Print the script output verbatim. If it shows \`DEVLENS_NOT_RUNNING — starting
     console.log(`  Updated CLAUDE.md with Devlens rules reference`);
   }
 
-  // 7. Create .devlens/rules.md with default rules
+  // 7. Create or update .devlens/rules.md — append missing sections
   const devlensProjectDir = path.join(resolvedDir, '.devlens');
   if (!fs.existsSync(devlensProjectDir)) {
     fs.mkdirSync(devlensProjectDir, { recursive: true });
@@ -623,6 +623,21 @@ Print the script output verbatim. If it shows \`DEVLENS_NOT_RUNNING — starting
   if (!fs.existsSync(rulesPath)) {
     fs.writeFileSync(rulesPath, DEFAULT_RULES);
     console.log(`  Created .devlens/rules.md with default rules`);
+  } else {
+    let rulesContent = fs.readFileSync(rulesPath, 'utf-8');
+    let updated = false;
+    if (!rulesContent.includes('## Coding Rules')) {
+      rulesContent += '\n' + DEFAULT_RULES.split('## Coding Rules')[1].split('## Feature')[0].trimEnd().replace(/^/, '## Coding Rules');
+      updated = true;
+    }
+    if (!rulesContent.includes('## Feature & System Documentation')) {
+      rulesContent += '\n\n## Feature & System Documentation\n' + DEFAULT_RULES.split('## Feature & System Documentation\n')[1];
+      updated = true;
+    }
+    if (updated) {
+      fs.writeFileSync(rulesPath, rulesContent);
+      console.log(`  Updated .devlens/rules.md with missing rule sections`);
+    }
   }
 
   // Get network IPs for display
