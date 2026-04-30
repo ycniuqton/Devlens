@@ -353,6 +353,11 @@ function renderTreeView(files) {
 }
 
 function handleDiffUpdate(payload) {
+  document.getElementById('diff-update-banner').style.display = 'block';
+}
+
+function applyDiffUpdate() {
+  document.getElementById('diff-update-banner').style.display = 'none';
   loadDiff();
 }
 
